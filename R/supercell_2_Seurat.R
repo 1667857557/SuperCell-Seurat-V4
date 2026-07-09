@@ -94,7 +94,7 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
   if(length(SC.fields) > 0){
     meta <- cbind(meta, SC.fields)
   }
-  m.seurat <- Seurat::CreateSeuratObject(counts = SC.GE, meta.data = meta)
+  m.seurat <- .sc_create_seurat_object(counts = SC.GE, meta.data = meta, assay.version = output.assay.version)
   
   if(.sc_seurat_v5()){
     #m.seurat[["RNA"]] <- as(object = m.seurat[["RNA"]], Class = "Assay")

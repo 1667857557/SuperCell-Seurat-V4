@@ -585,10 +585,10 @@ ExpandMetacellSeuratAssay5 <- function(object,
 
 
   #colnames(expanded.data) <- colnames(expanded.data)
-  expanded.sobj <- CreateSeuratObject(counts = expanded.counts,
+  expanded.sobj <- .sc_create_seurat_object(counts = expanded.counts,
                                       meta.data = expanded.meta.data,
                                       assay = assay)
-  expanded.sobj[[assay]]$data <- expanded.data
+  expanded.sobj <- .sc_set_assay_data(expanded.sobj, new.data = expanded.data, assay = assay, slot = "data")
   Idents(expanded.sobj) <- "ident"
   return(expanded.sobj)
 }

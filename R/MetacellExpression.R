@@ -25,7 +25,8 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
     stop("'pb.method' must be either 'average' or 'aggregate'")
   }
   object.assays <- .FilterObjects(object = object, classes.keep = c("Assay",
-                                                                    "Assay5"))
+                                                                    "Assay5",
+                                                                    "StdAssay"))
   assays <- assays %||% object.assays
   if (!all(assays %in% object.assays)) {
     assays <- assays[assays %in% object.assays]
@@ -124,7 +125,7 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
     names(x = data.return)[i] <- assays[[i]]
   }
   if (return.seurat) {
-    toRet <- CreateSeuratObject(counts = data.return[[1]],
+    toRet <- .sc_create_seurat_object(counts = data.return[[1]],
                                 project = if (pb.method == "average")
                                   "Average"
                                 else "Aggregate", assay = names(x = data.return)[1],

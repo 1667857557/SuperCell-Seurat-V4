@@ -230,12 +230,16 @@ SCimplify_for_Seurat <- function(seurat,
                                                                ranges = Signac::StringToGRanges(rownames(seurat[[chromAssay]]), 
                                                                                                 sep = peakSep), 
                                                                annotation = Signac::Annotation(seurat[[chromAssay]]))
-        chrom.assay.list[[chromAssay]]$data <- MetacellExpression(seurat,
-                                                                  assays = chromAssay, 
-                                                                  pb.method = "average",
-                                                                  group.by = paste0("metacell_g", gamma), 
-                                                                  layer = "data", 
-                                                                  return.seurat = F)[[chromAssay]]
+        chrom.assay.list[[chromAssay]] <- .sc_set_assay_data(
+          object = chrom.assay.list[[chromAssay]],
+          new.data = MetacellExpression(seurat,
+                                        assays = chromAssay,
+                                        pb.method = "average",
+                                        group.by = paste0("metacell_g", gamma),
+                                        layer = "data",
+                                        return.seurat = F)[[chromAssay]],
+          slot = "data"
+        )
       } else {
         chrom.assay.list[[chromAssay]] <- CreateChromatinAssay(counts =  MetacellExpression(seurat,
                                                                                             assays = chromAssay, 
@@ -291,7 +295,7 @@ SCimplify_for_Seurat <- function(seurat,
           )
         }
         
-        seurat.mc <- CreateSeuratObject(std.assay.list[[1]],assay = names(std.assay.list)[1])
+        seurat.mc <- .sc_create_seurat_object(std.assay.list[[1]], assay = names(std.assay.list)[1])
         for (std.a in names(std.assay.list)[-1]) {
           seurat.mc[[std.a]] <- std.assay.list[[std.a]]
         }
@@ -312,7 +316,7 @@ SCimplify_for_Seurat <- function(seurat,
       
     } else {
       
-      seurat.mc <- CreateSeuratObject(chrom.assay.list[[1]],assay = names(chrom.assay.list)[1])
+      seurat.mc <- .sc_create_seurat_object(chrom.assay.list[[1]], assay = names(chrom.assay.list)[1])
       for (a in names(chrom.assay.list)[-1]) {
         seurat.mc[[a]] <- chrom.assay.list[[a]]
       }
