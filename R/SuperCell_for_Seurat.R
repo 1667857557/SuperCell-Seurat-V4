@@ -475,7 +475,7 @@ ExpandMetacellSeurat <- function(metacell.sobj,
   colnames(expanded.counts) <- rownames(expanded.meta.data)
   
   #colnames(expanded.data) <- colnames(expanded.data)
-  expanded.sobj <- CreateSeuratObject(counts = expanded.data,meta.data = expanded.meta.data,assay = assay)
+  expanded.sobj <- .sc_create_seurat_object(counts = expanded.data, meta.data = expanded.meta.data, assay = assay)
   expanded.sobj[[assay]]@counts <- expanded.counts
   Idents(expanded.sobj) <- Idents(metacell.sobj)
   return(expanded.sobj)

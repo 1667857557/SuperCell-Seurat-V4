@@ -11,36 +11,37 @@ AggregateFragmentFile(
   output_path = NULL,
   tmp_path = "./tmp/",
   nb_cl = NULL,
-  nb_row_split = "10000000",
+  nb_row_split = 10000000L,
   bgzip_path = NULL,
   tabix_path = NULL,
-  returnOutputFileName = T
+  returnOutputFileName = TRUE,
+  keep_unmatched = FALSE
 )
 }
 \arguments{
 \item{input_file}{path to original fragments file}
 
-\item{membership}{membership vector}
+\item{membership}{named vector mapping single-cell barcodes to final metacell barcodes}
 
-\item{output_name}{name of the supercell fragments file (whithout extension)}
+\item{output_name}{name of the metacell fragments file}
 
-\item{output_path}{path where the new fragments file will be saved}
+\item{output_path}{directory where the new fragments file will be saved}
 
-\item{tmp_path}{directory path for tempory files}
+\item{tmp_path}{directory path for temporary files}
 
-\item{nb_cl}{number of cores to use. (default \code{nb_cl = parallel::detectCores()-2})}
+\item{nb_cl}{number of workers to use}
 
 \item{nb_row_split}{row number for split files}
 
-\item{returnOutputFileName}{wheter to return the new fragment file name}
+\item{bgzip_path}{optional path to bgzip}
 
-\item{prefixMC}{prefix of metacell name in membership}
+\item{tabix_path}{optional path to tabix}
+
+\item{returnOutputFileName}{whether to return the new fragment file name}
+
+\item{keep_unmatched}{whether to keep fragments whose barcode is absent from membership}
 }
 \description{
-This function transforms fragments file associating each fragment to a single-cell to a fragments file associating fragments to metacells
-}
-\examples{
-\dontrun{
-
+Transform fragments from single-cell barcodes to metacell barcodes.
 }
 }
