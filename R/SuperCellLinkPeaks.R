@@ -140,19 +140,19 @@ SuperCellLinkPeaks <- function(
          "Run RegionsStats before calling this function.")
   }
   if (!("count" %in% colnames(x = meta.features))) {
-    data.use <- GetAssayData(object = object[[peak.assay]], slot = "counts")
+    data.use <- .sc_get_assay_data(object = object[[peak.assay]], slot = "counts")
     hvf.info <- FindTopFeatures(object = data.use, verbose = FALSE)
     hvf.info <- hvf.info[rownames(meta.features), , drop = FALSE]
     meta.features <- cbind(meta.features, hvf.info)
   }
-  peak.data <- GetAssayData(
+  peak.data <- .sc_get_assay_data(
     object = object, assay = peak.assay, slot = peak.slot
   )
   # # depends on SeuratObject v5
   # if (!(expression.slot %in% Layers(object = object))) {
   #   stop("Requested expression layer not found")
   # }
-  expression.data <- GetAssayData(
+  expression.data <- .sc_get_assay_data(
     object = object, assay = expression.assay, slot = expression.slot
   )
   peakcounts <- rowSums(x = peak.data > 0)

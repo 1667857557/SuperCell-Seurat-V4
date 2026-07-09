@@ -687,11 +687,11 @@ FindMarkers.SuperCell.Assay <- function(object, slot = "data", cells.1 = NULL, c
 {
   data.slot <- ifelse(test = test.use %in% Seurat:::DEmethods_counts(), 
                       yes = "counts", no = slot)
-  if (length(x = Layers(object = object, search = slot)) > 
+  if (length(x = .sc_layers(object = object, search = slot)) >
       1) {
     stop(slot, " layers are not joined. Please run JoinLayers")
   }
-  data.use <- GetAssayData(object = object, slot = data.slot)
+  data.use <- .sc_get_assay_data(object = object, slot = data.slot)
   fc.results <- FoldChange.SuperCell(object = object, slot = fc.slot, 
                                      cells.1 = cells.1, cells.2 = cells.2, 
                                      weights.1 = weights.1, weights.2 = weights.2,
@@ -820,7 +820,7 @@ FoldChange.SuperCell.Assay <- function(object,
                                        pseudocount.use = 1, fc.name = NULL, mean.fxn = NULL, base = 2, 
                                        norm.method = NULL, ...) 
 {
-  data <- GetAssayData(object = object, slot = slot)
+  data <- .sc_get_assay_data(object = object, slot = slot)
   
   
   log1pdata.mean.fxn <- function(x, weights) {
