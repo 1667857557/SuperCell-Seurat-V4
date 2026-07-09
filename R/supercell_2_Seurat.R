@@ -96,9 +96,9 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
   }
   m.seurat <- Seurat::CreateSeuratObject(counts = SC.GE, meta.data = meta)
   
-  if(packageVersion("Seurat") >= "5"){
+  if(.sc_seurat_v5()){
     #m.seurat[["RNA"]] <- as(object = m.seurat[["RNA"]], Class = "Assay")
-    m.seurat<-Seurat::SetAssayData(m.seurat,new.data = Seurat::GetAssayData(m.seurat,assay = "RNA",layer = "counts"),assay = "RNA",layer = "counts")
+    m.seurat<-.sc_set_assay_data(m.seurat, new.data = .sc_get_assay_data(m.seurat, assay = "RNA", slot = "counts"), assay = "RNA", slot = "counts")
   }
    
   if(!do.preproc) return(m.seurat)
@@ -111,7 +111,7 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
   if(is.log.normalized){
     message("Doing: data to normalized data")
     #m.seurat@assays$RNA@data <- m.seurat@assays$RNA@counts
-    m.seurat<-Seurat::SetAssayData(m.seurat,new.data = Seurat::GetAssayData(m.seurat,assay = "RNA",layer = "counts"),assay = "RNA",layer = "data")
+    m.seurat<-.sc_set_assay_data(m.seurat, new.data = .sc_get_assay_data(m.seurat, assay = "RNA", slot = "counts"), assay = "RNA", slot = "data")
   }
  
   ## Sample-weighted scaling
@@ -121,10 +121,10 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
     #                                                                w = meta$size,
     #                                                                center = do.center,
     #                                                                scale = do.scale)))
-    m.seurat<-Seurat::SetAssayData(m.seurat,new.data = t(as.matrix(corpcor::wt.scale(Matrix::t((Seurat::GetAssayData(m.seurat,layer = "data"))),
+    m.seurat<-.sc_set_assay_data(m.seurat, new.data = t(as.matrix(corpcor::wt.scale(Matrix::t((.sc_get_assay_data(m.seurat, slot = "data"))),
                                                                              w = meta$size,
                                                                              center = do.center,
-                                                                             scale = do.scale))),assay = "RNA",layer = "scale.data")
+                                                                             scale = do.scale))), assay = "RNA", slot = "scale.data")
     message("Done: weighted scaling")
     
   } else {
@@ -134,7 +134,7 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
   }
 
   #m.seurat@assays$RNA@misc[["scale.data.weighted"]] <- m.seurat@assays$RNA@scale.data
-  m.seurat<-Seurat::SetAssayData(m.seurat,new.data = Seurat::GetAssayData(m.seurat,layer = "scale.data"),assay = "RNA",layer = "scale.data.weighted")
+  m.seurat<-.sc_set_assay_data(m.seurat, new.data = .sc_get_assay_data(m.seurat, slot = "scale.data"), assay = "RNA", slot = "scale.data.weighted")
   
   if(is.null(var.genes)){
     var.genes <- sort(SC$genes.use)
@@ -142,7 +142,7 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
   
   
   #if(is.null(N.comp)) N.comp <- min(50, ncol(m.seurat@assays$RNA@counts)-1)
-  if(is.null(N.comp)) N.comp <- min(50, ncol(Seurat::GetAssayData(m.seurat,layer = "counts"))-1)
+  if(is.null(N.comp)) N.comp <- min(50, ncol(.sc_get_assay_data(m.seurat, slot = "counts"))-1)
   
   Seurat::VariableFeatures(m.seurat) <- var.genes
   m.seurat <- Seurat::RunPCA(m.seurat, verbose = F, npcs = max(N.comp))
@@ -150,7 +150,7 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
   
   my_pca <- supercell_prcomp(X = Matrix::t(SC.GE[var.genes, ]), genes.use = var.genes,
                              fast.pca = TRUE,
-                             supercell_size = meta$supercell_size,
+                             supercell_size = meta$size,
                              k = dim(m.seurat@reductions$pca_seurat)[2],
                              do.scale = do.scale, do.center = do.center)
   
@@ -183,7 +183,7 @@ supercell_2_Seurat <- function(SC.GE, SC, fields = c(),
     warning("Super-cell graph was not found in SC object, no super-cell graph was added to Seurat object")
   }
   
-  if(packageVersion("Seurat") >= "5" & output.assay.version == "v5"){
+  if(.sc_seurat_v5() & output.assay.version == "v5"){
     m.seurat[["RNA"]] <- as(object = m.seurat[["RNA"]], Class = "Assay5")
   }
   return(m.seurat)
