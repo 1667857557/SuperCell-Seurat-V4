@@ -3,6 +3,8 @@
 #' \code{MetacellExpression} 
 #' Compute metacells from a Seurat single-cell object. 
 #' @param object A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
+#' @param slot Assay slot/layer to aggregate. Use `layer` as an alias for Seurat v5 callers.
+#' @param layer Deprecated alias of `slot`; retained for Seurat v5 compatibility.
 #' @return  A Seurat object with aggregated data
 #' @import Seurat
 #' @import SeuratObject
@@ -11,8 +13,9 @@
 
 MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, features = NULL,
                                return.seurat = TRUE, group.by = "ident", add.ident = NULL,
-                               layer = "counts", verbose = TRUE, ...)
+                               slot = "counts", layer = NULL, verbose = TRUE, ...)
 {
+  if (!is.null(layer)) slot <- layer
   SeuratObject::CheckDots(..., fxns = "CreateSeuratObject")
   if (!is.null(x = add.ident)) {
     .Deprecated(msg = "'add.ident' is a deprecated argument, please use the 'group.by' argument instead")
@@ -22,7 +25,8 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
     stop("'pb.method' must be either 'average' or 'aggregate'")
   }
   object.assays <- .FilterObjects(object = object, classes.keep = c("Assay",
-                                                                    "Assay5"))
+                                                                    "Assay5",
+                                                                    "StdAssay"))
   assays <- assays %||% object.assays
   if (!all(assays %in% object.assays)) {
     assays <- assays[assays %in% object.assays]
@@ -33,10 +37,10 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
       warning("Requested assays that do not exist in object. Proceeding with existing assays only.")
     }
   }
-  if (length(x = layer) == 1) {
-    layer <- rep_len(x = layer, length.out = length(x = assays))
+  if (length(x = slot) == 1) {
+    slot <- rep_len(x = slot, length.out = length(x = assays))
   }
-  else if (length(x = layer) != length(x = assays)) {
+  else if (length(x = slot) != length(x = assays)) {
     stop("Number of layers provided does not match number of assays")
   }
   data <- FetchData(object = object, vars = rev(x = group.by))
@@ -88,14 +92,14 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
   }
   data.return <- list()
   for (i in 1:length(x = assays)) {
-    data.use <- GetAssayData(object = object, assay = assays[i],
-                             layer = layer[i])
+    data.use <- .sc_get_assay_data(object = object, assay = assays[i],
+                                  slot = slot[i])
     features.to.avg <- features %||% rownames(x = data.use)
     if (inherits(x = features, what = "list")) {
       features.to.avg <- features[i]
     }
     if (IsMatrixEmpty(x = data.use)) {
-      warning("The ", layer[i], " layer for the ", assays[i],
+      warning("The ", slot[i], " layer for the ", assays[i],
               " assay is empty. Skipping assay.", immediate. = TRUE,
               call. = FALSE)
       next
@@ -121,14 +125,14 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
     names(x = data.return)[i] <- assays[[i]]
   }
   if (return.seurat) {
-    toRet <- CreateSeuratObject(counts = data.return[[1]],
+    toRet <- .sc_create_seurat_object(counts = data.return[[1]],
                                 project = if (pb.method == "average")
                                   "Average"
                                 else "Aggregate", assay = names(x = data.return)[1],
                                 ...)
     if (length(x = data.return) > 1) {
       for (i in 2:length(x = data.return)) {
-        toRet[[names(x = data.return)[i]]] <- CreateAssay5Object(counts = data.return[[i]])
+        toRet[[names(x = data.return)[i]]] <- .sc_create_assay_object(counts = data.return[[i]])
       }
     }
     if (DefaultAssay(object = object) %in% names(x = data.return)) {

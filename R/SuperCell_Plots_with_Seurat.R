@@ -30,7 +30,7 @@ FeatureFeaturePlot.SuperCell <- function (seurat.obj, feature.x, feature.y, clus
     seurat.obj <- Seurat::NormalizeData(seurat.obj, normalization.method = normalization.method.1,
                                         margin = norm.margin.1)
   }
-  fe1 <- Seurat::GetAssayData(seurat.obj, layer = "data", assay = assays[1])[feature.x, , drop= F ]
+  fe1 <- .sc_get_assay_data(seurat.obj, slot = "data", assay = assays[1])[feature.x, , drop= F ]
   feature.x <- paste0(gsub("_", "", tolower(assays[1])), "_", feature.x)
   rownames(fe1) <- feature.x
 
@@ -39,7 +39,7 @@ FeatureFeaturePlot.SuperCell <- function (seurat.obj, feature.x, feature.y, clus
     seurat.obj <- Seurat::NormalizeData(seurat.obj, normalization.method = normalization.method.2,
                                         margin = norm.margin.2)
   }
-  fe2 <- Seurat::GetAssayData(seurat.obj, layer = "data", assay = assays[2])[feature.y, , drop= F]
+  fe2 <- .sc_get_assay_data(seurat.obj, slot = "data", assay = assays[2])[feature.y, , drop= F]
   feature.y <- paste0(gsub("_", "", tolower(assays[2])), "_", feature.y)
   rownames(fe2) <- feature.y
   fe <- rbind(fe1, fe2)
@@ -126,9 +126,9 @@ FeatureScatter.SuperCell <- function (object, feature1, feature2, cells = NULL, 
     cells <- sample(x = cells)
   }
   group.by <- group.by %||% "ident"
-  data <- Seurat::FetchData(object = object, vars = c(feature1, feature2, size.by, group.by), 
-                            cells = cells, 
-                            layer = layer)
+  data <- .sc_fetch_data(object = object, vars = c(feature1, feature2, size.by, group.by),
+                         cells = cells,
+                         slot = layer)
   if (!grepl(pattern = feature1, x = names(x = data)[1])) {
     rlang::abort(message = paste("Feature 1", sQuote(x = feature1),
                           "not found"))
@@ -562,8 +562,8 @@ ExpandMetacellSeuratAssay5 <- function(object,
                                        meta.data.vars = NULL) {
   membership <- rep(1:ncol(object), object$size)
   DefaultAssay(object) <- assay
-  feature.data <- GetAssayData(
-    object = object, assay = assay, layer = "data"
+  feature.data <- .sc_get_assay_data(
+    object = object, assay = assay, slot = "data"
   )
 
   meta.data <- FetchData(object,vars = c(c("orig.ident","ident"),meta.data.vars))
@@ -572,9 +572,9 @@ ExpandMetacellSeuratAssay5 <- function(object,
   expanded.data <-  as(feature.data[,membership],"CsparseMatrix")
   colnames(expanded.data) <- rownames(expanded.meta.data)
 
-  if(!sum(dim(object[[assay]]$counts)) == 0) {
-    feature.counts <- GetAssayData(
-      object = object, assay = assay, layer = "counts"
+  if(.sc_assay_has_slot(object, assay, "counts")) {
+    feature.counts <- .sc_get_assay_data(
+      object = object, assay = assay, slot = "counts"
     )
     feature.counts <- feature.counts[features,]
     expanded.counts <-  as(feature.counts[,membership],"CsparseMatrix")
@@ -585,10 +585,10 @@ ExpandMetacellSeuratAssay5 <- function(object,
 
 
   #colnames(expanded.data) <- colnames(expanded.data)
-  expanded.sobj <- CreateSeuratObject(counts = expanded.counts,
+  expanded.sobj <- .sc_create_seurat_object(counts = expanded.counts,
                                       meta.data = expanded.meta.data,
                                       assay = assay)
-  expanded.sobj[[assay]]$data <- expanded.data
+  expanded.sobj <- .sc_set_assay_data(expanded.sobj, new.data = expanded.data, assay = assay, slot = "data")
   Idents(expanded.sobj) <- "ident"
   return(expanded.sobj)
 }
