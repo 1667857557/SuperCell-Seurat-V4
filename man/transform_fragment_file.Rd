@@ -15,16 +15,16 @@ transform_fragment_file(
 \arguments{
 \item{input_file}{path to original fragments file}
 
-\item{output_name}{name of the supercell fragments file (whithout extension)}
+\item{output_name}{name of the supercell fragments file}
 
 \item{output_path}{path where the new fragments file will be saved}
 
-\item{membership}{membership vector}
+\item{membership}{named vector mapping single-cell barcodes to output metacell barcodes}
 
-\item{n_skip}{number of lines to skip in fragments file, (by default 0)}
+\item{n_skip}{ignored; retained for backward compatibility}
 }
 \description{
-This function transforms fragments file associating each fragment to a single-cell to a fragments file associating fragments to metacells
+This function transforms a fragment file associating each fragment to a single cell to a fragment file associating fragments to metacells.
 }
 \examples{
 \dontrun{

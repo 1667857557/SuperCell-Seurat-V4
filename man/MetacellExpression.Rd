@@ -14,6 +14,7 @@ MetacellExpression(
   add.ident = NULL,
   slot = "counts",
   layer = NULL,
+  metacell.names = NULL,
   verbose = TRUE,
   ...
 )
@@ -24,6 +25,8 @@ MetacellExpression(
 \item{slot}{Assay slot/layer to aggregate. Use `layer` as an alias for Seurat v5 callers.}
 
 \item{layer}{Deprecated alias of `slot`; retained for Seurat v5 compatibility.}
+
+\item{metacell.names}{optional output metacell names; defaults to the grouping levels.}
 }
 \value{
 A Seurat object with aggregated data

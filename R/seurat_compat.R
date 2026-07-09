@@ -5,7 +5,7 @@
 }
 
 .sc_assay_object <- function(object, assay = NULL) {
-  if (inherits(object, what = c("Assay", "Assay5", "StdAssay"))) {
+  if (inherits(object, what = c("Assay", "Assay5", "StdAssay", "ChromatinAssay"))) {
     return(object)
   }
   assay <- assay %||% Seurat::DefaultAssay(object)
@@ -86,3 +86,60 @@
     search[search %in% c("counts", "data", "scale.data")]
   }
 }
+
+.SCFilterAssays <- function(object, classes.keep = c("Assay", "Assay5", "StdAssay", "ChromatinAssay")) {
+  ns_so <- asNamespace("SeuratObject")
+  ns_seurat <- asNamespace("Seurat")
+  filter_objects <- NULL
+
+  if (exists(".FilterObjects", envir = ns_so, mode = "function", inherits = FALSE)) {
+    filter_objects <- get(".FilterObjects", envir = ns_so, inherits = FALSE)
+  } else if (exists(".FilterObjects", envir = ns_seurat, mode = "function", inherits = FALSE)) {
+    filter_objects <- get(".FilterObjects", envir = ns_seurat, inherits = FALSE)
+  } else if (exists("FilterObjects", envir = ns_so, mode = "function", inherits = FALSE)) {
+    filter_objects <- get("FilterObjects", envir = ns_so, inherits = FALSE)
+  }
+
+  if (!is.null(filter_objects)) {
+    filtered <- tryCatch(
+      filter_objects(object = object, classes.keep = classes.keep),
+      error = function(e) NULL
+    )
+    if (!is.null(filtered)) return(filtered)
+  }
+
+  assays <- Seurat::Assays(object = object)
+  assays[vapply(assays, function(assay) {
+    inherits(object[[assay]], classes.keep)
+  }, logical(1))]
+}
+
+.SCResolveNbCl <- function(nb_cl = NULL) {
+  if (!is.null(nb_cl)) {
+    nb <- suppressWarnings(as.integer(nb_cl[1]))
+    if (is.na(nb) || nb < 1L) nb <- 1L
+    return(nb)
+  }
+
+  env <- Sys.getenv(c("SUPER_CELL_WORKERS", "REGCOMPASS_WORKERS", "SLURM_CPUS_PER_TASK", "NSLOTS"), unset = NA)
+  env <- suppressWarnings(as.integer(env))
+  env <- env[is.finite(env) & env >= 1L]
+  if (length(env)) return(env[[1]])
+
+  if (requireNamespace("future", quietly = TRUE)) {
+    fc <- tryCatch(future::availableCores(), error = function(e) NA_integer_)
+    if (is.finite(fc) && fc >= 1L) return(as.integer(fc))
+  }
+
+  cores <- parallel::detectCores(logical = TRUE)
+  if (is.na(cores) || cores < 1L) cores <- 1L
+  max(1L, as.integer(cores) - 2L)
+}
+
+.SCFormatMetacellNames <- function(membership, prefixMC = "") {
+  out <- paste0(prefixMC %||% "", membership)
+  names(out) <- names(membership)
+  as.character(out)
+}
+
+.sc_filter_assays <- .SCFilterAssays

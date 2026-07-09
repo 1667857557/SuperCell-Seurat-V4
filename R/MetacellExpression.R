@@ -5,6 +5,7 @@
 #' @param object A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
 #' @param slot Assay slot/layer to aggregate. Use `layer` as an alias for Seurat v5 callers.
 #' @param layer Deprecated alias of `slot`; retained for Seurat v5 compatibility.
+#' @param metacell.names optional output metacell names; defaults to the grouping levels.
 #' @return  A Seurat object with aggregated data
 #' @import Seurat
 #' @import SeuratObject
@@ -13,7 +14,7 @@
 
 MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, features = NULL,
                                return.seurat = TRUE, group.by = "ident", add.ident = NULL,
-                               slot = "counts", layer = NULL, verbose = TRUE, ...)
+                               slot = "counts", layer = NULL, metacell.names = NULL, verbose = TRUE, ...)
 {
   if (!is.null(layer)) slot <- layer
   SeuratObject::CheckDots(..., fxns = "CreateSeuratObject")
@@ -24,9 +25,7 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
   if (!(pb.method %in% c("average", "aggregate"))) {
     stop("'pb.method' must be either 'average' or 'aggregate'")
   }
-  object.assays <- .FilterObjects(object = object, classes.keep = c("Assay",
-                                                                    "Assay5",
-                                                                    "StdAssay"))
+  object.assays <- .SCFilterAssays(object = object)
   assays <- assays %||% object.assays
   if (!all(assays %in% object.assays)) {
     assays <- assays[assays %in% object.assays]
@@ -90,6 +89,14 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
                                                                                         split = ":"))), collapse = "_"))
                                             })
   }
+  category.matrix <- category.matrix[, order(colnames(category.matrix)), drop = FALSE]
+  out.names <- colnames(category.matrix)
+  if (!is.null(metacell.names)) {
+    if (length(metacell.names) != ncol(category.matrix)) {
+      stop("`metacell.names` length must match number of metacells.", call. = FALSE)
+    }
+    out.names <- as.character(metacell.names)
+  }
   data.return <- list()
   for (i in 1:length(x = assays)) {
     data.use <- .sc_get_assay_data(object = object, assay = assays[i],
@@ -121,7 +128,7 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
       next
     }
     data.return[[i]] <- as.sparse(x = (data.use %*% category.matrix))
-    colnames(data.return[[i]]) <- paste0("Metacell_", c(1:ncol(data.return[[i]])))
+    colnames(data.return[[i]]) <- out.names
     names(x = data.return)[i] <- assays[[i]]
   }
   if (return.seurat) {
