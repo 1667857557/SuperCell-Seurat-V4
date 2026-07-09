@@ -1,59 +1,146 @@
-# SuperCell2.0 enables semi-supervised construction of multimodal metacell atlases
+# SuperCell
 
-SuperCell2.0 now handles single-cell multimodal data such as CITE-seq (joint measurements of RNA and epitope in single cells) and 10X multiome (joint measurements of RNA and ATAC in single nuclei).
-
-Leveraging the Weighted Nearest Neighbor (WNN) framework of [Seurat](https://satijalab.org/seurat/), SuperCell2.0 performs **multimodal metacell identfication**. SuperCell2.0 also proposes a **semi-supervised** workflow in which partial cell annotation can be used to help metacell identification. See our [tutorials](#tutorials) for examples.
-
-<p align="center">
-
-<img src="docs/figure_1_workflow.png" width="750"/>
-
-</p>
+SuperCell builds metacells from single-cell RNA, CITE-seq, and multiome Seurat objects. The current code defaults to Seurat v4-style assay outputs while remaining compatible with Seurat v5 objects.
 
 ## Installation
 
-SuperCell2.0 requires [Seurat](https://github.com/satijalab/seurat) for standard single-cell assays, such as RNA and Protein assays, and [Signac](https://github.com/stuart-lab/signac) for chromatin assays as weel as other R packages (the full list of dependencies is available [here](DESCRIPTION)).
-
-To facilitate dependencies installation, we recommend to use the conda [environment](tutorials/supercell_tuto_env.yaml) we provide for tutorials. Then you can install everything in about 6 min using conda like this:
-
-``` bash
-conda env create -n supercell_tuto_env -f tutorials/supercell_tuto_env.yaml
-conda activate supercell_tuto_env
-Rscript -e "remotes::install_github('GfellerLab/SuperCell@supercell-2.0',upgrade = 'never');library(SuperCell)"
+```r
+if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
+remotes::install_github("GfellerLab/SuperCell")
+library(SuperCell)
 ```
 
-Otherwise, you can install install SuperCell2.0 in R like this:
+Key runtime dependencies include Seurat, SeuratObject, Signac, data.table, fs, foreach, doParallel, future, future.apply, and pbapply.
 
-``` r
-if (!requireNamespace("remotes")) install.packages("remotes")
-remotes::install_github("GfellerLab/SuperCell@supercell-2.0")
+## Minimal Seurat workflow
 
-library(SuperCell)
+### 1. Preprocess the single-cell object
+
+Run the usual Seurat preprocessing first. `SCimplify_for_Seurat()` expects reductions such as `pca`, `apca`, or other user-provided embeddings to already exist.
+
+```r
+DefaultAssay(obj) <- "RNA"
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+```
+
+### 2. Build metacells
+
+Unimodal RNA metacells:
+
+```r
+mc <- SCimplify_for_Seurat(
+  seurat = obj,
+  assay = "RNA",
+  reduction = list("pca"),
+  dims = list(1:30),
+  gamma = 20
+)
+```
+
+Multimodal RNA + ADT metacells:
+
+```r
+mc <- SCimplify_for_Seurat(
+  seurat = obj,
+  assay = c("RNA", "ADT"),
+  reduction = list("pca", "apca"),
+  dims = list(1:30, 1:18),
+  gamma = 20
+)
+```
+
+Optional semi-supervision uses a metadata column with labels; `NA` labels are allowed:
+
+```r
+mc <- SCimplify_for_Seurat(
+  seurat = obj,
+  assay = c("RNA", "ADT"),
+  reduction = list("pca", "apca"),
+  dims = list(1:30, 1:18),
+  label = "celltype",
+  gamma = 20
+)
+```
+
+The returned Seurat object contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`.
+
+## Metacell expression aggregation
+
+Use `MetacellExpression()` when metacell IDs already exist in metadata. Output column names preserve the grouping IDs by default.
+
+```r
+obj$metacell_id <- c("MC_1", "MC_1", "MC_2")
+mat <- MetacellExpression(
+  object = obj,
+  assays = "RNA",
+  group.by = "metacell_id",
+  slot = "counts",
+  return.seurat = FALSE
+)[["RNA"]]
+```
+
+Custom output names can be supplied with `metacell.names`.
+
+## Fragment aggregation for ATAC/multiome
+
+`AggregateFragmentFile()` expects a named vector mapping single-cell barcodes to final metacell barcodes. Unmatched barcodes are removed by default.
+
+```r
+membership <- c(
+  "AAAC-1" = "Metacell_1",
+  "AAAG-1" = "Metacell_2"
+)
+
+mc_fragments <- AggregateFragmentFile(
+  input_file = "fragments.tsv.gz",
+  membership = membership,
+  output_path = "metacell_fragments",
+  nb_cl = 4
+)
+```
+
+For `SCimplify_for_Seurat()`, pass fragment files by chromatin assay. Multiple files per assay are supported.
+
+```r
+mc <- SCimplify_for_Seurat(
+  seurat = obj,
+  assay = c("RNA", "ATAC"),
+  reduction = list("pca", "lsi"),
+  dims = list(1:30, 2:30),
+  fragmentFiles = list(ATAC = c("sample1/fragments.tsv.gz", "sample2/fragments.tsv.gz")),
+  gamma = 20
+)
+```
+
+`bgzip` and `tabix` must be available in `PATH` or passed with `bgzip_path` and `tabix_path`.
+
+## Useful plotting helpers
+
+```r
+DimPlotSC(obj, mc, reduction = "umap", metacell.col = "celltype")
+DimPlot.SuperCell(mc, reduction = "umap", group.by = "celltype")
+VlnPlot.SuperCell(mc, features = c("CD3D", "MS4A1"), group.by = "celltype")
+FeatureScatter.SuperCell(mc, feature1 = "rna_CD14", feature2 = "adt_CD14")
+```
+
+## Conversion from legacy SuperCell objects
+
+```r
+seurat_mc <- supercell_2_Seurat(
+  SC.GE = SC.GE,
+  SC = SC,
+  fields = c("ident"),
+  output.assay.version = "v4"
+)
 ```
 
 ## Tutorials
 
-1.  [Building and analyzing metacells in Bone Marrow CITE-seq data with SuperCell2.0](https://htmlpreview.github.io/?https://github.com/GfellerLab/SuperCell/blob/supercell-2.0/docs/tutorials/SuperCell2.0_BM_CITE_seq.html)
-(duration ~20 min)
-2.  [Building and analyzing metacells in PBMC 10X multiome data with SuperCell2.0](https://htmlpreview.github.io/?https://github.com/GfellerLab/SuperCell/blob/supercell-2.0/docs/tutorials/SuperCell2.0_PBMC_10x_multiome.html) 
-(duration ~40 min, inculding peak calling and metacell fragment aggregation)
-3.  [Building and analyzing a PBMC CITE-seq atlas with SuperCell2.0 and STACAS](https://htmlpreview.github.io/?https://github.com/GfellerLab/SuperCell/blob/supercell-2.0/docs/tutorials/SuperCell2.0_PBMC_CITE_seq_atlas.html)
-(duration ~40 min, without raw data download)
+Long-form rendered tutorials are available under `docs/tutorials/`. The package vignette `vignettes/a_SuperCell.Rmd` contains a short runnable example.
 
-## [License]
+## Citation
 
-SuperCell2.0 is developed by the group of David Gfeller at University of Lausanne.
-
-SuperCell2.0 is available under GPL-3 License.
-
-For scientific questions, please contact Léonard Hérault ([leonard.herault\@gustaveroussy.fr](mailto:leonard.herault@gustaveroussy.fr)) or David Gfeller ([David.Gfeller\@unil.ch](mailto:David.Gfeller@unil.ch)).
-
-## How to cite
-
-If you use SuperCell2.0 in a publication, please cite:
-
--   [Hérault et al. SuperCell2.0 enables semi-supervised construction of multimodal metacell atlases](https://doi.org/10.64898/2026.02.19.706848)
-
--   [Bilous et al. Metacells untangle large and complex single-cell transcriptome networks, BMC Bioinformatics (2022).](https://doi.org/10.1186/s12859-022-04861-1) 
-
--   [Bilous et al. Building and analyzing metacells in single-cell genomics data, Mol Syst Bio (2024).](https://doi.org/10.1038/s44320-024-00045-6)
+If you use SuperCell, please cite the SuperCell publications listed in the manuscript and package documentation.

@@ -38,10 +38,15 @@ Imports:
     methods,
     rlang,
     Seurat,
+    SeuratObject,
     Signac,
     data.table,
     foreach,
-    doParallel
+    doParallel,
+    fs,
+    future,
+    future.apply,
+    pbapply
 RoxygenNote: 7.3.3
 Suggests:
     SingleCellExperiment,
