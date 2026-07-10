@@ -260,6 +260,15 @@ AggregateFragmentFile <- function(input_file,
   cleanup_pattern <- paste0("^", basename(unique_prefix))
   on.exit(unlink(list.files(path = tmp_path, pattern = cleanup_pattern, full.names = TRUE), force = TRUE), add = TRUE)
 
+  preview_cmd <- paste(shQuote(commands$bgzip), "-dc", shQuote(input_file), "| head -n 100000")
+  preview <- data.table::fread(cmd = preview_cmd, header = FALSE, showProgress = FALSE)
+  if (nrow(preview) == 0L || ncol(preview) < 4L) stop("Input fragment file is empty or malformed.", call. = FALSE)
+  preview_barcodes <- unique(as.character(preview[[4L]]))
+  preview_match <- mean(preview_barcodes %in% names(membership))
+  if (!is.finite(preview_match) || preview_match == 0) {
+    stop("No fragment barcodes matched the supplied membership. Check barcode prefixes and sample mapping.", call. = FALSE)
+  }
+
   message("Start fragment decompression")
   decompress_status <- system2(commands$bgzip, args = c("-dc", input_file), stdout = decompressed)
   if (!identical(decompress_status, 0L) || !file.exists(decompressed) || file.info(decompressed)$size == 0) {
