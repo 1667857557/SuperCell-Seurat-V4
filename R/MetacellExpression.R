@@ -92,10 +92,20 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
   category.matrix <- category.matrix[, order(colnames(category.matrix)), drop = FALSE]
   out.names <- colnames(category.matrix)
   if (!is.null(metacell.names)) {
-    if (length(metacell.names) != ncol(category.matrix)) {
-      stop("`metacell.names` length must match number of metacells.", call. = FALSE)
+    if (!is.null(names(metacell.names))) {
+      missing.names <- setdiff(colnames(category.matrix), names(metacell.names))
+      if (length(missing.names)) {
+        stop("Named `metacell.names` must include every grouping level: ",
+             paste(utils::head(missing.names, 10L), collapse = ", "),
+             call. = FALSE)
+      }
+      out.names <- as.character(metacell.names[colnames(category.matrix)])
+    } else {
+      if (length(metacell.names) != ncol(category.matrix)) {
+        stop("`metacell.names` length must match number of metacells.", call. = FALSE)
+      }
+      out.names <- as.character(metacell.names)
     }
-    out.names <- as.character(metacell.names)
   }
   data.return <- list()
   for (i in 1:length(x = assays)) {
