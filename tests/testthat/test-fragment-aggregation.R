@@ -64,3 +64,30 @@ test_that("AggregateFragmentFile accepts data.frame membership", {
   expect_setequal(unique(got[[4]]), c("MC1", "MC2"))
   expect_false(any(is.na(got[[4]])))
 })
+
+test_that("AggregateFragmentFile maps unique sample-prefixed membership to bare fragment barcodes", {
+  skip_if(Sys.which("bgzip") == "")
+  skip_if(Sys.which("tabix") == "")
+
+  td <- tempdir()
+  fragment_tsv <- file.path(td, "fragments_prefixed.tsv")
+  writeLines(c(
+    "chr1\t100\t150\tcell1-1\t1",
+    "chr1\t200\t240\tcell2-1\t1"
+  ), fragment_tsv)
+  system2("bgzip", c("-f", fragment_tsv))
+  input <- paste0(fragment_tsv, ".gz")
+
+  out <- SuperCell:::AggregateFragmentFile(
+    input_file = input,
+    membership = c("Pool1_cell1-1" = "MC1", "Pool1_cell2-1" = "MC2"),
+    output_name = "mc_fragments_prefixed.tsv.gz",
+    output_path = td,
+    nb_cl = 1L,
+    returnOutputFileName = TRUE
+  )
+
+  expect_true(file.exists(out))
+  got <- data.table::fread(cmd = paste("bgzip -dc", shQuote(out)))
+  expect_setequal(unique(got[[4]]), c("MC1", "MC2"))
+})
