@@ -70,7 +70,8 @@ rna.comp <- c(1:30) # components used from the dimension redcution of the RNA mo
 adt.comp <- c(1:18) # components used from the dimension redcution of the Protein modality
 prop.annotated.cells <- 0.5 # proportion of cell label to keep to illsutrate the semi-superveised workflow  (see below) 
 
-graining.level = 75 
+gamma <- 75
+seed <- 12345L
 
 ```
 
@@ -110,6 +111,15 @@ DimPlot(bm,reduction = "wnn.umap", group.by = 'celltype.l2')
 
 # Metacell identification with SuperCell2.0
 
+## Function workflow and output contract
+
+The tutorial uses the public SuperCell2 workflow functions in the following order:
+
+1. `SCimplify_for_Seurat()` builds the KNN graph, identifies metacells, aggregates assay counts with `MetacellExpression()`, records `seed`, and writes a stable `membership_table`/`membership` schema in `@misc`.
+2. `MetacellExpression()` aggregates counts by the metacell grouping. Named metacell mappings are used internally so sorted grouping levels and output column names stay aligned.
+3. `validate_metacell_output()` checks that every assay has the same metacell column order and that `misc$membership_table` matches `colnames(object)`. Run it after creating or renaming metacell objects.
+4. Fragment helpers such as `AggregateFragmentFile()` are only needed for ATAC/Chromatin assays with fragment files. This CITE-seq tutorial has no fragment files, but objects still contain an empty `fragment_manifest` for a consistent schema.
+
 ## Unsupervised multimodal metacell identification
 
 We can identify metacells based on protein and RNA modalities.
@@ -120,17 +130,19 @@ bm.mc.multi <- SCimplify_for_Seurat(
   assay = c("RNA","ADT"),
   reduction = list("pca", "apca"), 
   dims = list(rna.comp, adt.comp), 
-  gamma = graining.level
+  gamma = gamma,
+  seed = seed
 )
 
 
 ```
 
-`SCimply_for_Seurat` function gives a seurat metacell object with aggregated (summed) raw counts for each modality. All categorical metadata available in the single cell seurat object are also aggregated in the resulting metacell object by assigning the metacell to the label with the maximum absolute abundance within it.
+`SCimplify_for_Seurat()` returns a Seurat metacell object with aggregated (summed) raw counts for each modality. The function now records a stable output contract in `@misc`: `membership_table` links each original single cell to one metacell, `membership` is the backward-compatible named vector, `fragment_manifest` records generated ATAC fragment files when fragments are supplied, and `seed` records the random seed used for the run. All categorical metadata available in the single-cell Seurat object are also aggregated in the resulting metacell object by assigning the metacell to the label with the maximum absolute abundance within it.
 
 ```{r}
 bm.mc.multi
-head(FetchData(bm.mc.multi,c("celltype.l1","celltype.l1_purity","celltype.l2","celltype.l2_purity","size")))
+head(FetchData(bm.mc.multi,c("metacell_id", "celltype.l1","celltype.l1_purity","celltype.l2","celltype.l2_purity","size")))
+validate_metacell_output(bm.mc.multi)
 
 ```
 
@@ -142,8 +154,15 @@ names(bm.mc.multi@misc)
 #graining level used
 head(bm.mc.multi@misc$gamma)
 
-# membership vector linking single cells to metacells
+# stable membership table linking single cells to metacells
+head(bm.mc.multi@misc$membership_table)
+
+# backward-compatible membership vector linking single cells to metacells
 head(bm.mc.multi@misc$membership)
+
+# reproducibility metadata
+bm.mc.multi@misc$seed
+bm.mc.multi@misc$schema_version
 
 #metacells_hierarchy used for rescaling 
 head(bm.mc.multi@misc$metacells_hierarchy$merges)
@@ -210,7 +229,8 @@ bm.mc.rna<- SCimplify_for_Seurat(
   assay = c("RNA"),
   reduction = list("pca"), 
   dims = list(rna.comp), 
-  gamma = graining.level
+  gamma = gamma,
+  seed = seed
 )
 
 bm.mc.rna
@@ -248,7 +268,8 @@ bm.mc.multi.sup <- SCimplify_for_Seurat(
   assay = c("RNA","ADT"),
   reduction = list("pca", "apca"), 
   dims = list(rna.comp, adt.comp), 
-  gamma = graining.level,
+  gamma = gamma,
+  seed = seed,
   label = "partial_annotation"
 )
 
@@ -270,7 +291,8 @@ bm.mc.rna.sup<- SCimplify_for_Seurat(
   assay = c("RNA"),
   reduction = list("pca"), 
   dims = list(rna.comp), 
-  gamma = graining.level,
+  gamma = gamma,
+  seed = seed,
   label = "partial_annotation"
 )
 
@@ -316,7 +338,8 @@ Multimodal workflow outperforms RNA-based workflow and semi-supervision using pa
 A metacell object can be rescaled to another graining level, without re-identifying metacells.
 
 ```{r}
-bm.mc.multi <- SCimplify_for_Seurat(seurat = bm,seurat.mc = bm.mc.multi,gamma = 20)
+bm.mc.multi <- SCimplify_for_Seurat(seurat = bm, seurat.mc = bm.mc.multi, gamma = 20, seed = seed)
+validate_metacell_output(bm.mc.multi)
 bm.mc.multi
 DimPlotSC(bm,
           bm.mc.multi,
