@@ -105,7 +105,8 @@ rm -r GSE164378_RAW
 ```{r}
 adt.comp <- 1:50
 rna.comp <- 1:40
-graining.level = 20
+gamma <- 20
+seed <- 12345L
 ```
 
 ## Load single-cell data as a seurat object
@@ -170,6 +171,15 @@ pbmc$celltype.l1.5[pbmc$celltype.l1 =="other T"] <- pbmc$celltype.l2[pbmc$cellty
 
 # Metacell construction
 
+## Function workflow and output contract
+
+This atlas tutorial creates metacells per sample and then integrates those metacells. The relevant SuperCell2 functions are used as follows:
+
+1. `SCimplify_for_Seurat()` is run independently on each sample. It aggregates RNA/ADT counts, records the `seed`, and stores `misc$membership_table`, the backward-compatible `misc$membership`, and an empty `misc$fragment_manifest` because this CITE-seq workflow has no fragment files.
+2. `MetacellExpression()` is called internally by `SCimplify_for_Seurat()` and uses named metacell mappings to prevent count/name swaps when grouping levels are sorted.
+3. `validate_metacell_output()` is run after per-sample metacell construction and again after sample-prefix renaming so the integration input has consistent assay columns and membership metadata.
+4. Fragment aggregation helpers (`AggregateFragmentFile()` and wrappers) are not used here, but downstream ATAC tutorials should pass fragment files to `SCimplify_for_Seurat()` and then call `validate_metacell_output(require_fragments = TRUE)`.
+
 We will process each single-cell sample separately for identifying metacells.
 
 ```{r}
@@ -206,7 +216,8 @@ pbmc.smp.list <- lapply(pbmc.smp.list, function(x) {
     reduction = list("pca", "apca"),
     dims      = list(rna.comp, adt.comp),
     label     = "celltype.l1.5",
-    gamma     = graining.level
+    gamma     = gamma,
+    seed      = seed
   )
   return(x)
 })
@@ -216,7 +227,12 @@ tf <- Sys.time()
 tf - t0
 ```
 
-`pbmc.smp.list` now contains seurat metacell objects that we can integrate using STACAS.
+`pbmc.smp.list` now contains Seurat metacell objects that we can integrate using STACAS. Each object contains the stable SuperCell2 output contract (`misc$membership_table`, `misc$membership`, `misc$fragment_manifest`, `misc$seed`, and metacell-level `metacell_id`/`size` metadata), which can be validated before downstream integration.
+
+```{r}
+invisible(lapply(pbmc.smp.list, validate_metacell_output))
+```
+
 
 # Metacell integration
 
@@ -233,14 +249,23 @@ print(reference)
 
 First we preprocess the metacell RNA data. We rename the metacells by adding a sample name prefix to avoid duplicated names at the integration step.
 
-Accordingly, we also have to rename the metacell membership vector of each metacell object.
+Accordingly, we also have to rename the metacell membership table/vector of each metacell object so the table remains consistent with the prefixed metacell column names.
 
 ```{r message=FALSE}
 pbmc.smp.list <- lapply(X = pbmc.smp.list, FUN = function(x) { 
-  
-  x <- RenameCells(x,add.cell.id = unique(x$sample))
-  x@misc$new.membership <- paste0(unique(x$sample),"_Metacell_", x@misc$membership)
-  names(x@misc$new.membership) <- names(x@misc$membership)
+  sample_id <- unique(x$sample)
+  x <- RenameCells(x, add.cell.id = sample_id)
+
+  membership_table <- x@misc$membership_table
+  membership_table$metacell_id <- paste0(sample_id, "_", membership_table$metacell_id)
+  x@misc$membership_table <- membership_table
+  x@misc$new.membership <- stats::setNames(
+    membership_table$metacell_id,
+    membership_table$cell_id
+  )
+
+  validate_metacell_output(x)
+
   DefaultAssay(x) <- "RNA"
   x <- NormalizeData(x, verbose = FALSE) %>% FindVariableFeatures()
   
@@ -303,7 +328,13 @@ pbmc.combined[["stacas_rna"]] <- stacas_rna
 Finally we add a membership vector to the combined object.
 
 ```{r}
-pbmc.combined@misc$membership <- unlist(lapply(pbmc.smp.list,FUN = function(x) {x@misc$new.membership}))
+pbmc.combined@misc$membership <- unlist(lapply(pbmc.smp.list, FUN = function(x) {x@misc$new.membership}))
+pbmc.combined@misc$membership_table <- do.call(
+  rbind,
+  lapply(pbmc.smp.list, FUN = function(x) {x@misc$membership_table})
+)
+pbmc.combined@misc$schema_version <- "supercell2_metacell_v1"
+validate_metacell_output(pbmc.combined)
 ```
 
 
