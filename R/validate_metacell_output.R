@@ -41,7 +41,14 @@ validate_metacell_output <- function(object,
     if (!is.data.frame(manifest) || nrow(manifest) == 0L) {
       stop("Fragment manifest is missing.", call. = FALSE)
     }
-    if (any(!file.exists(manifest$fragment_file)) || any(!file.exists(manifest$index_file))) {
+    required_manifest_cols <- c("fragment_file", "index_file")
+    if (!all(required_manifest_cols %in% colnames(manifest))) {
+      stop("Fragment manifest is missing required columns: ",
+           paste(setdiff(required_manifest_cols, colnames(manifest)), collapse = ", "),
+           call. = FALSE)
+    }
+    if (any(!nzchar(manifest$fragment_file)) || any(!nzchar(manifest$index_file)) ||
+        any(!file.exists(manifest$fragment_file)) || any(!file.exists(manifest$index_file))) {
       stop("One or more fragment files or indexes are missing.", call. = FALSE)
     }
   }

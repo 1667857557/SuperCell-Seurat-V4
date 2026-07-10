@@ -92,6 +92,30 @@ transform_fragment_file_parallel <- function(input_file,
   membership
 }
 
+.SCBuildFragmentBarcodeMap <- function(membership) {
+  direct <- data.frame(
+    fragment_barcode = names(membership),
+    super_cell_names = unname(membership),
+    stringsAsFactors = FALSE
+  )
+
+  stripped <- sub("^[^_]+_", "", names(membership))
+  can_strip <- stripped != names(membership) & nzchar(stripped)
+  unique_stripped <- can_strip & !duplicated(stripped) & !duplicated(stripped, fromLast = TRUE)
+  stripped <- stripped[unique_stripped]
+
+  stripped_map <- data.frame(
+    fragment_barcode = stripped,
+    super_cell_names = unname(membership)[unique_stripped],
+    stringsAsFactors = FALSE
+  )
+  stripped_map <- stripped_map[!(stripped_map$fragment_barcode %in% direct$fragment_barcode), , drop = FALSE]
+
+  matching_names <- rbind(direct, stripped_map)
+  rownames(matching_names) <- matching_names$fragment_barcode
+  matching_names
+}
+
 .SCFragmentCommands <- function(bgzip_path = NULL, tabix_path = NULL, split_path = NULL) {
   bgzip_command <- bgzip_path %||% Sys.which("bgzip")
   tabix_command <- tabix_path %||% Sys.which("tabix")
@@ -285,12 +309,7 @@ AggregateFragmentFile <- function(input_file,
     stop("Fragment file split produced no chunks.", call. = FALSE)
   }
 
-  matching_names <- data.frame(
-    single_cell_names = names(membership),
-    super_cell_names = membership,
-    stringsAsFactors = FALSE
-  )
-  rownames(matching_names) <- matching_names$single_cell_names
+  matching_names <- .SCBuildFragmentBarcodeMap(membership)
 
   nb_cl <- .SCResolveNbCl(nb_cl)
   update_one <- function(fragment) {

@@ -46,6 +46,15 @@ SCimplify_for_Seurat <- function(seurat,
 {
   seed <- as.integer(seed)[1L]
   if (!is.finite(seed)) stop("`seed` must be a finite integer.", call. = FALSE)
+  old_random_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_random_seed <- if (old_random_seed_exists) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE) else NULL
+  on.exit({
+    if (old_random_seed_exists) {
+      assign(".Random.seed", old_random_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }, add = TRUE)
   set.seed(seed)
   fragment_manifest_rows <- list()
 
@@ -219,7 +228,8 @@ SCimplify_for_Seurat <- function(seurat,
   membership_names <- stats::setNames(as.character(unname(membership_names)), as.character(names(membership)))
   if (anyDuplicated(names(membership_names))) stop("Duplicated single-cell IDs in membership.", call. = FALSE)
   seurat[[paste0("metacell_g", gamma)]] <- membership_names
-  metacell_ids <- unique(unname(membership_names))
+  metacell_ids <- sort(unique(unname(membership_names)))
+  metacell_name_map <- stats::setNames(metacell_ids, metacell_ids)
   membership_table <- data.frame(cell_id = names(membership_names), metacell_id = unname(membership_names), stringsAsFactors = FALSE)
   fragment_membership <- membership_names
   if (return.seurat) {
@@ -239,7 +249,7 @@ SCimplify_for_Seurat <- function(seurat,
         chrom.assay.list[[chromAssay]] <- CreateChromatinAssay(counts =  MetacellExpression(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
-                                                                                            metacell.names = metacell_ids,
+                                                                                            metacell.names = metacell_name_map,
                                                                                             #layer = "counts",
                                                                                             return.seurat = F)[[chromAssay]],
                                                                genome = genome(seurat[[chromAssay]]),
@@ -252,7 +262,7 @@ SCimplify_for_Seurat <- function(seurat,
                                         assays = chromAssay,
                                         pb.method = "average",
                                         group.by = paste0("metacell_g", gamma),
-                                        metacell.names = metacell_ids,
+                                        metacell.names = metacell_name_map,
                                         layer = "data",
                                         return.seurat = F)[[chromAssay]],
           slot = "data"
@@ -261,7 +271,7 @@ SCimplify_for_Seurat <- function(seurat,
         chrom.assay.list[[chromAssay]] <- CreateChromatinAssay(counts =  MetacellExpression(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
-                                                                                            metacell.names = metacell_ids,
+                                                                                            metacell.names = metacell_name_map,
                                                                                             #layer = "counts",
                                                                                             return.seurat = F)[[chromAssay]],
                                                                genome = genome(seurat[[chromAssay]]),
@@ -319,13 +329,13 @@ SCimplify_for_Seurat <- function(seurat,
           std.assay.list[[assay]] <- .sc_create_assay_object(counts = MetacellExpression(seurat,
                                                                                     assays = assay,
                                                                                     group.by = paste0("metacell_g", gamma),
-                                                                                    metacell.names = metacell_ids,
+                                                                                    metacell.names = metacell_name_map,
                                                                                     #layer = "counts",
                                                                                     return.seurat = F)[[assay]],
                                                         data =  MetacellExpression(seurat,
                                                                                    assays = assay, pb.method = "average",
                                                                                    group.by = paste0("metacell_g", gamma),
-                                                                                   metacell.names = metacell_ids,
+                                                                                   metacell.names = metacell_name_map,
                                                                                    layer = "data",
                                                                                    return.seurat = F)[[assay]]
           )
@@ -342,7 +352,7 @@ SCimplify_for_Seurat <- function(seurat,
         seurat.mc <- MetacellExpression(seurat,
                                         assays = assaysToAgg[!isChromAssay],
                                         group.by = paste0("metacell_g", gamma),
-                                        metacell.names = metacell_ids,
+                                        metacell.names = metacell_name_map,
                                         #layer = "counts",
                                         return.seurat = T)
       }

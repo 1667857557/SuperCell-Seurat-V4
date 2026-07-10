@@ -23,3 +23,28 @@ test_that("validate_metacell_output validates membership contract", {
 
   expect_true(isTRUE(SuperCell::validate_metacell_output(object)))
 })
+
+
+test_that("validate_metacell_output rejects malformed fragment manifests", {
+  skip_if_not_installed("Seurat")
+
+  counts <- Matrix::Matrix(c(1, 2), nrow = 1, sparse = TRUE)
+  rownames(counts) <- "gene1"
+  colnames(counts) <- c("MC1", "MC2")
+  object <- Seurat::CreateSeuratObject(counts = counts)
+  object@misc$membership_table <- data.frame(
+    cell_id = c("cell1", "cell2"),
+    metacell_id = c("MC1", "MC2"),
+    stringsAsFactors = FALSE
+  )
+  object@misc$fragment_manifest <- data.frame(
+    assay = "ATAC",
+    status = "ok",
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    SuperCell::validate_metacell_output(object, require_fragments = TRUE),
+    "required columns"
+  )
+})
