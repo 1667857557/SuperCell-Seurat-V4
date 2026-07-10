@@ -15,6 +15,7 @@ AggregateFragmentFile(
   bgzip_path = NULL,
   tabix_path = NULL,
   returnOutputFileName = TRUE,
+  return_details = FALSE,
   keep_unmatched = FALSE
 )
 }
@@ -38,6 +39,8 @@ AggregateFragmentFile(
 \item{tabix_path}{optional path to tabix}
 
 \item{returnOutputFileName}{whether to return the new fragment file name}
+
+\item{return_details}{whether to return a structured list with output files and per-file metacell counts}
 
 \item{keep_unmatched}{whether to keep fragments whose barcode is absent from membership}
 }

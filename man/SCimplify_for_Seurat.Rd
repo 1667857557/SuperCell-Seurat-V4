@@ -24,10 +24,14 @@ SCimplify_for_Seurat(
   bgzip_path = NULL,
   tabix_path = NULL,
   prefixMC = "",
+  seed = 12345L,
+  return_membership_table = TRUE,
+  return_fragment_manifest = TRUE,
   peakSep = c("-", "-"),
   label = NULL,
   return.seurat = T,
-  nb_cl = NULL
+  nb_cl = NULL,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -44,6 +48,12 @@ SCimplify_for_Seurat(
 \item{membership}{a vector of metacell membership as in SuperCell v1 to use to directly aggregate the data (optionnal).}
 
 \item{sobj.mc}{A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.}
+
+\item{return_fragment_manifest}{whether to store fragment_manifest and fragment_cell_map tables in misc.}
+
+\item{seed}{integer seed used for reproducible metacell construction.}
+
+\item{return_membership_table}{whether to store the membership table in misc.}
 }
 \value{
 A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.

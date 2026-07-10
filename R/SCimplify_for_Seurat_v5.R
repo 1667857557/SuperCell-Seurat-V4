@@ -57,6 +57,7 @@ SCimplify_for_Seurat <- function(seurat,
   }, add = TRUE)
   set.seed(seed)
   fragment_manifest_rows <- list()
+  fragment_cell_map_rows <- list()
 
   if (!is.null(label)) {
     seurat[[paste0(label,"_with_unknown")]] <- seurat[[label]]
@@ -286,37 +287,62 @@ SCimplify_for_Seurat <- function(seurat,
           tmpPath <- file.path(tempdir(), paste0("SuperCell_fragments_", Sys.getpid()))
         }
         frag_paths <- as.character(unlist(fragmentFiles[[chromAssay]], use.names = FALSE))
-        mcfragmentFileName <- vapply(seq_along(frag_paths), FUN.VALUE = character(1), FUN = function(i) {
+        fragment_results <- lapply(seq_along(frag_paths), function(i) {
           AggregateFragmentFile(input_file = frag_paths[[i]],
                                 tmp_path = file.path(tmpPath, paste0("fragment_", chromAssay, "_", sprintf("%03d", i))),
                                 output_name = paste0("MC_", i, "_", fs::path_file(frag_paths[[i]])),
                                 output_path = outputDirMcFragment,
                                 membership = fragment_membership,
                                 returnOutputFileName = TRUE,
+                                return_details = TRUE,
                                 bgzip_path = bgzip_path,
                                 tabix_path = tabix_path,
                                 nb_cl = nb_cl)
         })
+        fragment_cell_maps <- lapply(fragment_results, function(result) {
+          ids <- intersect(as.character(result$metacell_ids), colnames(chrom.assay.list[[chromAssay]]))
+          stats::setNames(ids, ids)
+        })
+        empty_maps <- which(!lengths(fragment_cell_maps))
+        if (length(empty_maps)) {
+          stop("No object metacells from aggregated fragment file(s) were present in the ChromatinAssay: ",
+               paste(utils::head(empty_maps, 10L), collapse = ", "), call. = FALSE)
+        }
+        all_registered_cells <- unlist(lapply(fragment_cell_maps, names), use.names = FALSE)
+        if (anyDuplicated(all_registered_cells)) {
+          duplicated_cells <- unique(all_registered_cells[duplicated(all_registered_cells)])
+          stop("Metacells are assigned to more than one fragment file: ",
+               paste(utils::head(duplicated_cells, 10L), collapse = ", "), call. = FALSE)
+        }
         if (isTRUE(return_fragment_manifest)) {
           for (i in seq_along(frag_paths)) {
             fragment_manifest_rows[[length(fragment_manifest_rows) + 1L]] <- data.frame(
               assay = chromAssay,
               input_file = normalizePath(frag_paths[[i]], mustWork = FALSE),
-              fragment_file = normalizePath(mcfragmentFileName[[i]], mustWork = FALSE),
-              index_file = normalizePath(paste0(mcfragmentFileName[[i]], ".tbi"), mustWork = FALSE),
+              fragment_file = fragment_results[[i]]$fragment_file,
+              index_file = fragment_results[[i]]$index_file,
               n_input_membership_cells = length(fragment_membership),
-              n_metacells = length(unique(fragment_membership)),
+              n_metacells = fragment_results[[i]]$n_metacells,
+              n_fragment_rows = fragment_results[[i]]$n_fragment_rows,
               status = "ok",
+              stringsAsFactors = FALSE
+            )
+            fragment_cell_map_rows[[length(fragment_cell_map_rows) + 1L]] <- data.frame(
+              assay = chromAssay,
+              fragment_file = fragment_results[[i]]$fragment_file,
+              object_cell = names(fragment_cell_maps[[i]]),
+              fragment_barcode = unname(fragment_cell_maps[[i]]),
               stringsAsFactors = FALSE
             )
           }
         }
         message("Fragment file aggregated")
-        mcFragments <- lapply(mcfragmentFileName, function(fragment_file) {
-          CreateFragmentObject(fragment_file,
-                               cells = colnames(chrom.assay.list[[chromAssay]]))
-        })
-        Fragments(chrom.assay.list[[chromAssay]]) <- mcFragments
+        mcFragments <- Map(function(result, cell_map) {
+          Signac::CreateFragmentObject(path = result$fragment_file,
+                                       cells = cell_map,
+                                       validate.fragments = TRUE)
+        }, result = fragment_results, cell_map = fragment_cell_maps)
+        Signac::Fragments(chrom.assay.list[[chromAssay]]) <- mcFragments
       }
 
     }
@@ -416,11 +442,16 @@ SCimplify_for_Seurat <- function(seurat,
     fragment_manifest <- if (length(fragment_manifest_rows) && isTRUE(return_fragment_manifest)) {
       do.call(rbind, fragment_manifest_rows)
     } else {
-      data.frame(assay = character(), input_file = character(), fragment_file = character(), index_file = character(), n_input_membership_cells = integer(), n_metacells = integer(), status = character(), stringsAsFactors = FALSE)
+      data.frame(assay = character(), input_file = character(), fragment_file = character(), index_file = character(), n_input_membership_cells = integer(), n_metacells = integer(), n_fragment_rows = integer(), status = character(), stringsAsFactors = FALSE)
+    }
+    fragment_cell_map <- if (length(fragment_cell_map_rows) && isTRUE(return_fragment_manifest)) {
+      do.call(rbind, fragment_cell_map_rows)
+    } else {
+      data.frame(assay = character(), fragment_file = character(), object_cell = character(), fragment_barcode = character(), stringsAsFactors = FALSE)
     }
     seurat.mc$metacell_id <- mc_ids
     seurat.mc$size <- as.integer(table(factor(membership_table$metacell_id, levels = mc_ids)))
-    seurat.mc@misc$schema_version <- "supercell2_metacell_v1"
+    seurat.mc@misc$schema_version <- "supercell2_metacell_v2"
     seurat.mc@misc$metacells_hierarchy <- walktrap
     seurat.mc@misc$walktrap_clusters <- walktrap$membership
     seurat.mc@misc$gamma <- gamma
@@ -434,6 +465,7 @@ SCimplify_for_Seurat <- function(seurat,
       seurat.mc@misc$membership_table <- NULL
     }
     seurat.mc@misc$fragment_manifest <- fragment_manifest
+    seurat.mc@misc$fragment_cell_map <- fragment_cell_map
   }
   return(seurat.mc)
 }
