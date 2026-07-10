@@ -416,10 +416,14 @@ SCimplify_for_Seurat <- function(seurat,
     seurat.mc@misc$gamma <- gamma
     seurat.mc@misc$seed <- seed
     seurat.mc@misc$membership <- membership_names
-    seurat.mc@misc$membership_table <- if (isTRUE(return_membership_table)) membership_table else membership_table
+    if (isTRUE(return_membership_table)) {
+      seurat.mc@misc$membership_table <- membership_table
+      stopifnot(identical(sort(unique(seurat.mc@misc$membership_table$metacell_id)), sort(colnames(seurat.mc))))
+      stopifnot(identical(names(seurat.mc@misc$membership), seurat.mc@misc$membership_table$cell_id))
+    } else {
+      seurat.mc@misc$membership_table <- NULL
+    }
     seurat.mc@misc$fragment_manifest <- fragment_manifest
-    stopifnot(identical(sort(unique(seurat.mc@misc$membership_table$metacell_id)), sort(colnames(seurat.mc))))
-    stopifnot(identical(names(seurat.mc@misc$membership), seurat.mc@misc$membership_table$cell_id))
   }
   return(seurat.mc)
 }

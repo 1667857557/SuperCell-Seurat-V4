@@ -294,7 +294,10 @@ AggregateFragmentFile <- function(input_file,
 
   nb_cl <- .SCResolveNbCl(nb_cl)
   update_one <- function(fragment) {
-    tmp <- data.table::fread(fragment)
+    tmp <- data.table::fread(fragment, header = FALSE)
+    if (nrow(tmp) == 0L || ncol(tmp) < 4L) {
+      stop("Input fragment file is empty or malformed.", call. = FALSE)
+    }
     if (!keep_unmatched) {
       tmp <- tmp[tmp$V4 %in% rownames(matching_names), ]
     }
@@ -302,7 +305,7 @@ AggregateFragmentFile <- function(input_file,
     tmp <- tmp[!is.na(tmp$V4) & tmp$V4 != "NA", ]
     out <- paste0(fragment, "_up")
     data.table::fwrite(tmp, out, quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t")
-    out
+    list(file = out, n = nrow(tmp))
   }
 
   message("Start fragment barcode update")
@@ -310,13 +313,17 @@ AggregateFragmentFile <- function(input_file,
     cl <- parallel::makeCluster(nb_cl)
     on.exit(parallel::stopCluster(cl), add = TRUE)
     doParallel::registerDoParallel(cl)
-    up_files <- foreach::foreach(fragment = list_fragments, .packages = c("data.table")) %dopar% {
+    update_results <- foreach::foreach(fragment = list_fragments, .packages = c("data.table")) %dopar% {
       update_one(fragment)
     }
   } else {
-    up_files <- lapply(list_fragments, update_one)
+    update_results <- lapply(list_fragments, update_one)
   }
-  up_files <- unlist(up_files, use.names = FALSE)
+  matched_rows <- sum(vapply(update_results, function(x) x$n, integer(1)))
+  if (matched_rows == 0L) {
+    stop("No fragment barcodes matched the supplied membership. Check barcode prefixes and sample mapping.", call. = FALSE)
+  }
+  up_files <- vapply(update_results, function(x) x$file, character(1))
 
   message("Start fragment concatenation")
   .SCCopyFilesBinary(up_files, full_output_name_tsv)
