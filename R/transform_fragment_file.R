@@ -36,17 +36,17 @@ transform_fragment_file_parallel <- function(input_file,
                                              membership,
                                              output_name = NULL,
                                              output_path = NULL,
-                                             tmp_path = "./tmp/",
+                                             tmp_path = NULL,
                                              nb_cl = NULL,
                                              nb_row_split = 10000000L,
                                              prefixMC = "SC_",
                                              bgzip_path = NULL,
                                              tabix_path = NULL,
                                              returnOutputFileName = TRUE) {
+  membership <- .SCNormalizeMembership(membership)
   if (!is.null(prefixMC) && nzchar(prefixMC)) {
-    membership_names <- names(membership)
-    membership <- paste0(prefixMC, membership)
-    names(membership) <- membership_names
+    cell_ids <- names(membership)
+    membership <- stats::setNames(paste0(prefixMC, unname(membership)), cell_ids)
   }
   AggregateFragmentFile(
     input_file = input_file,
@@ -62,16 +62,74 @@ transform_fragment_file_parallel <- function(input_file,
   )
 }
 
-.SCFragmentCommands <- function(bgzip_path = NULL, tabix_path = NULL) {
+.SCNormalizeMembership <- function(membership) {
+  if (is.data.frame(membership)) {
+    if (all(c("cell_id", "metacell_id") %in% colnames(membership))) {
+      cell_id <- membership$cell_id
+      metacell_id <- membership$metacell_id
+    } else if (ncol(membership) >= 2L) {
+      cell_id <- membership[[1L]]
+      metacell_id <- membership[[2L]]
+    } else {
+      stop("Membership data.frame must contain cell_id and metacell_id.", call. = FALSE)
+    }
+    membership <- stats::setNames(as.character(metacell_id), as.character(cell_id))
+  } else {
+    cell_id <- names(membership)
+    if (is.null(cell_id) || length(cell_id) != length(membership) || anyNA(cell_id) || any(!nzchar(cell_id))) {
+      stop("`membership` must be a named vector or a data.frame with cell_id and metacell_id.", call. = FALSE)
+    }
+    membership <- stats::setNames(as.character(unname(membership)), as.character(cell_id))
+  }
+  if (!length(membership)) stop("Membership is empty.", call. = FALSE)
+  if (anyDuplicated(names(membership))) {
+    duplicated_ids <- unique(names(membership)[duplicated(names(membership))])
+    stop("Duplicated single-cell barcodes in membership: ", paste(utils::head(duplicated_ids, 10L), collapse = ", "), call. = FALSE)
+  }
+  if (anyNA(membership) || any(!nzchar(membership))) {
+    stop("Membership contains missing or empty metacell IDs.", call. = FALSE)
+  }
+  membership
+}
+
+.SCBuildFragmentBarcodeMap <- function(membership) {
+  direct <- data.frame(
+    fragment_barcode = names(membership),
+    super_cell_names = unname(membership),
+    stringsAsFactors = FALSE
+  )
+
+  stripped <- sub("^[^_]+_", "", names(membership))
+  can_strip <- stripped != names(membership) & nzchar(stripped)
+  unique_stripped <- can_strip & !duplicated(stripped) & !duplicated(stripped, fromLast = TRUE)
+  stripped <- stripped[unique_stripped]
+
+  stripped_map <- data.frame(
+    fragment_barcode = stripped,
+    super_cell_names = unname(membership)[unique_stripped],
+    stringsAsFactors = FALSE
+  )
+  stripped_map <- stripped_map[!(stripped_map$fragment_barcode %in% direct$fragment_barcode), , drop = FALSE]
+
+  matching_names <- rbind(direct, stripped_map)
+  rownames(matching_names) <- matching_names$fragment_barcode
+  matching_names
+}
+
+.SCFragmentCommands <- function(bgzip_path = NULL, tabix_path = NULL, split_path = NULL) {
   bgzip_command <- bgzip_path %||% Sys.which("bgzip")
   tabix_command <- tabix_path %||% Sys.which("tabix")
+  split_command <- split_path %||% Sys.which("split")
   if (!nzchar(bgzip_command)) {
     stop("`bgzip` was not found. Provide `bgzip_path`.", call. = FALSE)
   }
   if (!nzchar(tabix_command)) {
     stop("`tabix` was not found. Provide `tabix_path`.", call. = FALSE)
   }
-  list(bgzip = bgzip_command, tabix = tabix_command)
+  if (!nzchar(split_command)) {
+    stop("GNU/coreutils `split` was not found.", call. = FALSE)
+  }
+  list(bgzip = bgzip_command, tabix = tabix_command, split = split_command)
 }
 
 .SCFragmentOutputNames <- function(input_file, output_name = NULL, output_path = NULL) {
@@ -121,7 +179,7 @@ transform_fragment_file_parallel <- function(input_file,
 }
 
 .SCValidateFragmentTable <- function(fragment_table, expected_cells) {
-  preview <- data.table::fread(fragment_table, nrows = 10000)
+  preview <- data.table::fread(fragment_table, nrows = 10000, header = FALSE)
   if (nrow(preview) == 0L || ncol(preview) < 4L) {
     stop("Aggregated fragment table is empty or malformed.", call. = FALSE)
   }
@@ -141,7 +199,7 @@ transform_fragment_file_parallel <- function(input_file,
   invisible(TRUE)
 }
 
-.SCValidateAggregatedFragments <- function(fragment_file, expected_cells, tabix_path = "tabix") {
+.SCValidateAggregatedFragments <- function(fragment_file, expected_cells, bgzip_path = "bgzip") {
   if (!file.exists(fragment_file)) {
     stop("Missing fragment file: ", fragment_file, call. = FALSE)
   }
@@ -149,27 +207,28 @@ transform_fragment_file_parallel <- function(input_file,
     stop("Aggregated fragment file is empty: ", fragment_file, call. = FALSE)
   }
   index_file <- paste0(fragment_file, ".tbi")
-  if (!file.exists(index_file)) {
-    stop("Missing tabix index: ", index_file, call. = FALSE)
+  if (!file.exists(index_file) || file.info(index_file)$size == 0) {
+    stop("Missing or empty tabix index: ", index_file, call. = FALSE)
   }
+  cmd <- paste(shQuote(bgzip_path), "-dc", shQuote(fragment_file), "| head -n 10000")
+  preview <- tryCatch(data.table::fread(cmd = cmd, header = FALSE, showProgress = FALSE), error = function(e) e)
+  if (inherits(preview, "error")) {
+    stop("Failed to read aggregated fragment preview: ", conditionMessage(preview), call. = FALSE)
+  }
+  if (nrow(preview) == 0L || ncol(preview) < 4L) {
+    stop("Aggregated fragment file is empty or malformed.", call. = FALSE)
+  }
+  found <- unique(as.character(preview[[4L]]))
   expected_cells <- unique(as.character(expected_cells))
-  preview <- tryCatch(
-    data.table::fread(cmd = paste(shQuote(tabix_path), "-H", shQuote(fragment_file)), nrows = 1000),
-    error = function(e) NULL
-  )
-  if (!is.null(preview) && ncol(preview) >= 4L && nrow(preview) > 0L) {
-    found <- unique(as.character(preview[[4]]))
-    if (any(is.na(found)) || any(found == "NA")) {
-      stop("Aggregated fragment file contains NA barcodes.", call. = FALSE)
-    }
-    if (length(intersect(expected_cells, found)) == 0L) {
-      stop("None of the expected metacell barcodes were found in aggregated fragment file.", call. = FALSE)
-    }
-    unexpected <- setdiff(found, expected_cells)
-    if (length(unexpected) > 0L) {
-      stop("Aggregated fragment file contains unexpected barcodes: ",
-           paste(utils::head(unexpected, 10), collapse = ", "), call. = FALSE)
-    }
+  if (anyNA(found) || any(!nzchar(found)) || any(found == "NA")) {
+    stop("Aggregated fragment file contains missing barcodes.", call. = FALSE)
+  }
+  unexpected <- setdiff(found, expected_cells)
+  if (length(unexpected)) {
+    stop("Aggregated fragment file contains unexpected metacell barcodes: ", paste(utils::head(unexpected, 10L), collapse = ", "), call. = FALSE)
+  }
+  if (!length(intersect(found, expected_cells))) {
+    stop("None of the expected metacell barcodes were found.", call. = FALSE)
   }
   invisible(TRUE)
 }
@@ -195,26 +254,28 @@ AggregateFragmentFile <- function(input_file,
                                   membership,
                                   output_name = NULL,
                                   output_path = NULL,
-                                  tmp_path = "./tmp/",
+                                  tmp_path = NULL,
                                   nb_cl = NULL,
                                   nb_row_split = 10000000L,
                                   bgzip_path = NULL,
                                   tabix_path = NULL,
                                   returnOutputFileName = TRUE,
                                   keep_unmatched = FALSE) {
-  if (is.null(names(membership)) || any(!nzchar(names(membership)))) {
-    stop("`membership` must be a named vector with single-cell barcodes as names.", call. = FALSE)
-  }
-  membership <- as.character(membership)
-  names(membership) <- names(membership)
+  membership <- .SCNormalizeMembership(membership)
   commands <- .SCFragmentCommands(bgzip_path = bgzip_path, tabix_path = tabix_path)
+  if (!file.exists(input_file)) stop("Fragment file not found: ", input_file, call. = FALSE)
+  if (file.access(input_file, mode = 4L) != 0L) stop("Fragment file is not readable: ", input_file, call. = FALSE)
   outputs <- .SCFragmentOutputNames(input_file, output_name, output_path)
   output_path <- outputs$output_path
   full_output_name <- outputs$gz
   full_output_name_tsv <- outputs$tsv
+  if (is.null(tmp_path)) {
+    tmp_path <- tempfile(pattern = paste0("SuperCell_fragments_", Sys.getpid(), "_"))
+  }
   tmp_path <- fs::path_abs(tmp_path)
 
   dir.create(output_path, showWarnings = FALSE, recursive = TRUE)
+  if (file.access(output_path, mode = 2L) != 0L) stop("Output directory is not writable: ", output_path, call. = FALSE)
   dir.create(tmp_path, showWarnings = FALSE, recursive = TRUE)
 
   unique_prefix <- paste0("frags_subset_", Sys.getpid(), "_", as.integer(Sys.time()), "_", sample.int(1e6, 1))
@@ -230,7 +291,7 @@ AggregateFragmentFile <- function(input_file,
   }
 
   message("Start fragments file split")
-  split_status <- system2("split", args = c("-l", as.character(as.integer(nb_row_split)), decompressed, split_prefix))
+  split_status <- system2(commands$split, args = c("-l", as.character(as.integer(nb_row_split)), decompressed, split_prefix))
   if (!identical(split_status, 0L)) {
     stop("Fragment file split failed.", call. = FALSE)
   }
@@ -239,16 +300,14 @@ AggregateFragmentFile <- function(input_file,
     stop("Fragment file split produced no chunks.", call. = FALSE)
   }
 
-  matching_names <- data.frame(
-    single_cell_names = names(membership),
-    super_cell_names = membership,
-    stringsAsFactors = FALSE
-  )
-  rownames(matching_names) <- matching_names$single_cell_names
+  matching_names <- .SCBuildFragmentBarcodeMap(membership)
 
   nb_cl <- .SCResolveNbCl(nb_cl)
   update_one <- function(fragment) {
-    tmp <- data.table::fread(fragment)
+    tmp <- data.table::fread(fragment, header = FALSE)
+    if (nrow(tmp) == 0L || ncol(tmp) < 4L) {
+      stop("Input fragment file is empty or malformed.", call. = FALSE)
+    }
     if (!keep_unmatched) {
       tmp <- tmp[tmp$V4 %in% rownames(matching_names), ]
     }
@@ -256,7 +315,7 @@ AggregateFragmentFile <- function(input_file,
     tmp <- tmp[!is.na(tmp$V4) & tmp$V4 != "NA", ]
     out <- paste0(fragment, "_up")
     data.table::fwrite(tmp, out, quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t")
-    out
+    list(file = out, n = nrow(tmp))
   }
 
   message("Start fragment barcode update")
@@ -264,13 +323,17 @@ AggregateFragmentFile <- function(input_file,
     cl <- parallel::makeCluster(nb_cl)
     on.exit(parallel::stopCluster(cl), add = TRUE)
     doParallel::registerDoParallel(cl)
-    up_files <- foreach::foreach(fragment = list_fragments, .packages = c("data.table")) %dopar% {
+    update_results <- foreach::foreach(fragment = list_fragments, .packages = c("data.table")) %dopar% {
       update_one(fragment)
     }
   } else {
-    up_files <- lapply(list_fragments, update_one)
+    update_results <- lapply(list_fragments, update_one)
   }
-  up_files <- unlist(up_files, use.names = FALSE)
+  matched_rows <- sum(vapply(update_results, function(x) x$n, integer(1)))
+  if (matched_rows == 0L) {
+    stop("No fragment barcodes matched the supplied membership. Check barcode prefixes and sample mapping.", call. = FALSE)
+  }
+  up_files <- vapply(update_results, function(x) x$file, character(1))
 
   message("Start fragment concatenation")
   .SCCopyFilesBinary(up_files, full_output_name_tsv)
@@ -284,11 +347,12 @@ AggregateFragmentFile <- function(input_file,
   }
 
   message("Start tabix")
-  tabix_status <- system2(commands$tabix, args = c("-f", "-p", "bed", full_output_name))
+  sort_check <- system2(commands$tabix, args = c("-f", "-p", "bed", full_output_name), stdout = TRUE, stderr = TRUE)
+  tabix_status <- attr(sort_check, "status") %||% 0L
   if (!identical(tabix_status, 0L)) {
-    stop("tabix indexing failed.", call. = FALSE)
+    stop("tabix indexing failed. The aggregated fragment file may be unsorted or malformed: ", paste(sort_check, collapse = "\n"), call. = FALSE)
   }
-  .SCValidateAggregatedFragments(full_output_name, expected_cells = unique(membership), tabix_path = commands$tabix)
+  .SCValidateAggregatedFragments(full_output_name, expected_cells = unique(membership), bgzip_path = commands$bgzip)
 
   if (returnOutputFileName) {
     return(full_output_name)

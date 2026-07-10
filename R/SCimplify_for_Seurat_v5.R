@@ -35,12 +35,29 @@ SCimplify_for_Seurat <- function(seurat,
                                  bgzip_path = NULL,
                                  tabix_path = NULL,
                                  prefixMC = "",
+                                 seed = 12345L,
+                                 return_membership_table = TRUE,
+                                 return_fragment_manifest = TRUE,
                                  peakSep = c("-", "-"),
                                  label = NULL,
                                  return.seurat = T,
                                  nb_cl = NULL,
                                  verbose = FALSE)
 {
+  seed <- as.integer(seed)[1L]
+  if (!is.finite(seed)) stop("`seed` must be a finite integer.", call. = FALSE)
+  old_random_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_random_seed <- if (old_random_seed_exists) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE) else NULL
+  on.exit({
+    if (old_random_seed_exists) {
+      assign(".Random.seed", old_random_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+  set.seed(seed)
+  fragment_manifest_rows <- list()
+
   if (!is.null(label)) {
     seurat[[paste0(label,"_with_unknown")]] <- seurat[[label]]
     seurat[[paste0(label,"_with_unknown")]][is.na(seurat[[paste0(label,"_with_unknown")]])] <- "unknown"
@@ -201,16 +218,20 @@ SCimplify_for_Seurat <- function(seurat,
     }
     else {
       if (!is.null(membership)) {
+        membership <- .SCNormalizeMembership(membership)
         walktrap <- list(membership = membership)
         gamma = floor(length(membership)/length(unique(membership)))
       }
     }
   }
   membership_names <- .SCFormatMetacellNames(membership, prefixMC = prefixMC)
+  membership_names <- stats::setNames(as.character(unname(membership_names)), as.character(names(membership)))
+  if (anyDuplicated(names(membership_names))) stop("Duplicated single-cell IDs in membership.", call. = FALSE)
   seurat[[paste0("metacell_g", gamma)]] <- membership_names
-  metacell_ids <- sort(unique(membership_names))
+  metacell_ids <- sort(unique(unname(membership_names)))
+  metacell_name_map <- stats::setNames(metacell_ids, metacell_ids)
+  membership_table <- data.frame(cell_id = names(membership_names), metacell_id = unname(membership_names), stringsAsFactors = FALSE)
   fragment_membership <- membership_names
-  names(fragment_membership) <- names(membership)
   if (return.seurat) {
     assaysToAgg <- Assays(seurat)[sapply(X = Assays(seurat),
                                          FUN = function(X) {
@@ -228,7 +249,7 @@ SCimplify_for_Seurat <- function(seurat,
         chrom.assay.list[[chromAssay]] <- CreateChromatinAssay(counts =  MetacellExpression(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
-                                                                                            metacell.names = metacell_ids,
+                                                                                            metacell.names = metacell_name_map,
                                                                                             #layer = "counts",
                                                                                             return.seurat = F)[[chromAssay]],
                                                                genome = genome(seurat[[chromAssay]]),
@@ -241,7 +262,7 @@ SCimplify_for_Seurat <- function(seurat,
                                         assays = chromAssay,
                                         pb.method = "average",
                                         group.by = paste0("metacell_g", gamma),
-                                        metacell.names = metacell_ids,
+                                        metacell.names = metacell_name_map,
                                         layer = "data",
                                         return.seurat = F)[[chromAssay]],
           slot = "data"
@@ -250,7 +271,7 @@ SCimplify_for_Seurat <- function(seurat,
         chrom.assay.list[[chromAssay]] <- CreateChromatinAssay(counts =  MetacellExpression(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
-                                                                                            metacell.names = metacell_ids,
+                                                                                            metacell.names = metacell_name_map,
                                                                                             #layer = "counts",
                                                                                             return.seurat = F)[[chromAssay]],
                                                                genome = genome(seurat[[chromAssay]]),
@@ -262,12 +283,12 @@ SCimplify_for_Seurat <- function(seurat,
 
       if (!is.null(fragmentFiles[[chromAssay]])) {
         if (is.null(tmpPath)) {
-          tmpPath <- "./tmp/"
+          tmpPath <- file.path(tempdir(), paste0("SuperCell_fragments_", Sys.getpid()))
         }
         frag_paths <- as.character(unlist(fragmentFiles[[chromAssay]], use.names = FALSE))
         mcfragmentFileName <- vapply(seq_along(frag_paths), FUN.VALUE = character(1), FUN = function(i) {
           AggregateFragmentFile(input_file = frag_paths[[i]],
-                                tmp_path = file.path(tmpPath, paste0("fragment_", chromAssay, "_", i)),
+                                tmp_path = file.path(tmpPath, paste0("fragment_", chromAssay, "_", sprintf("%03d", i))),
                                 output_name = paste0("MC_", i, "_", fs::path_file(frag_paths[[i]])),
                                 output_path = outputDirMcFragment,
                                 membership = fragment_membership,
@@ -276,6 +297,20 @@ SCimplify_for_Seurat <- function(seurat,
                                 tabix_path = tabix_path,
                                 nb_cl = nb_cl)
         })
+        if (isTRUE(return_fragment_manifest)) {
+          for (i in seq_along(frag_paths)) {
+            fragment_manifest_rows[[length(fragment_manifest_rows) + 1L]] <- data.frame(
+              assay = chromAssay,
+              input_file = normalizePath(frag_paths[[i]], mustWork = FALSE),
+              fragment_file = normalizePath(mcfragmentFileName[[i]], mustWork = FALSE),
+              index_file = normalizePath(paste0(mcfragmentFileName[[i]], ".tbi"), mustWork = FALSE),
+              n_input_membership_cells = length(fragment_membership),
+              n_metacells = length(unique(fragment_membership)),
+              status = "ok",
+              stringsAsFactors = FALSE
+            )
+          }
+        }
         message("Fragment file aggregated")
         mcFragments <- lapply(mcfragmentFileName, function(fragment_file) {
           CreateFragmentObject(fragment_file,
@@ -294,13 +329,13 @@ SCimplify_for_Seurat <- function(seurat,
           std.assay.list[[assay]] <- .sc_create_assay_object(counts = MetacellExpression(seurat,
                                                                                     assays = assay,
                                                                                     group.by = paste0("metacell_g", gamma),
-                                                                                    metacell.names = metacell_ids,
+                                                                                    metacell.names = metacell_name_map,
                                                                                     #layer = "counts",
                                                                                     return.seurat = F)[[assay]],
                                                         data =  MetacellExpression(seurat,
                                                                                    assays = assay, pb.method = "average",
                                                                                    group.by = paste0("metacell_g", gamma),
-                                                                                   metacell.names = metacell_ids,
+                                                                                   metacell.names = metacell_name_map,
                                                                                    layer = "data",
                                                                                    return.seurat = F)[[assay]]
           )
@@ -317,7 +352,7 @@ SCimplify_for_Seurat <- function(seurat,
         seurat.mc <- MetacellExpression(seurat,
                                         assays = assaysToAgg[!isChromAssay],
                                         group.by = paste0("metacell_g", gamma),
-                                        metacell.names = metacell_ids,
+                                        metacell.names = metacell_name_map,
                                         #layer = "counts",
                                         return.seurat = T)
       }
@@ -370,11 +405,35 @@ SCimplify_for_Seurat <- function(seurat,
     seurat.mc[[label]][seurat.mc[[paste0(label,"_purity")]]==0] <- "unknown"
   }
   if (return.seurat) {
-    seurat.mc$size <- as.numeric(table(factor(membership_names, levels = colnames(seurat.mc))))
+    mc_ids <- as.character(colnames(seurat.mc))
+    if (!setequal(unique(membership_table$metacell_id), mc_ids)) {
+      stop("Membership metacell IDs do not match metacell object colnames.", call. = FALSE)
+    }
+    membership_table$metacell_id <- factor(membership_table$metacell_id, levels = mc_ids)
+    membership_table <- membership_table[order(membership_table$metacell_id), , drop = FALSE]
+    membership_table$metacell_id <- as.character(membership_table$metacell_id)
+    membership_names <- stats::setNames(membership_table$metacell_id, membership_table$cell_id)
+    fragment_manifest <- if (length(fragment_manifest_rows) && isTRUE(return_fragment_manifest)) {
+      do.call(rbind, fragment_manifest_rows)
+    } else {
+      data.frame(assay = character(), input_file = character(), fragment_file = character(), index_file = character(), n_input_membership_cells = integer(), n_metacells = integer(), status = character(), stringsAsFactors = FALSE)
+    }
+    seurat.mc$metacell_id <- mc_ids
+    seurat.mc$size <- as.integer(table(factor(membership_table$metacell_id, levels = mc_ids)))
+    seurat.mc@misc$schema_version <- "supercell2_metacell_v1"
     seurat.mc@misc$metacells_hierarchy <- walktrap
     seurat.mc@misc$walktrap_clusters <- walktrap$membership
     seurat.mc@misc$gamma <- gamma
+    seurat.mc@misc$seed <- seed
     seurat.mc@misc$membership <- membership_names
+    if (isTRUE(return_membership_table)) {
+      seurat.mc@misc$membership_table <- membership_table
+      stopifnot(identical(sort(unique(seurat.mc@misc$membership_table$metacell_id)), sort(colnames(seurat.mc))))
+      stopifnot(identical(names(seurat.mc@misc$membership), seurat.mc@misc$membership_table$cell_id))
+    } else {
+      seurat.mc@misc$membership_table <- NULL
+    }
+    seurat.mc@misc$fragment_manifest <- fragment_manifest
   }
   return(seurat.mc)
 }
