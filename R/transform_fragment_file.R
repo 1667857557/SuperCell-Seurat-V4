@@ -153,26 +153,60 @@ transform_fragment_file_parallel <- function(input_file,
   list(output_path = output_path, gz = gz, tsv = tsv)
 }
 
-.SCCopyFilesBinary <- function(files, output_file) {
-  if (length(files) == 0L) {
+.SCCopyFilesBinary <- function(files,
+                               output_file,
+                               buffer_size = 1024L * 1024L) {
+  files <- as.character(files)
+  output_file <- as.character(output_file)[1L]
+  buffer_size <- as.integer(buffer_size)[1L]
+
+  if (!length(files)) {
     stop("No updated fragment chunks were produced.", call. = FALSE)
   }
+  if (is.na(buffer_size) || buffer_size < 1L) {
+    stop("`buffer_size` must be a positive integer.", call. = FALSE)
+  }
+
+  missing_files <- files[!file.exists(files)]
+  if (length(missing_files)) {
+    stop("Fragment chunks do not exist: ",
+         paste(utils::head(missing_files, 10L), collapse = ", "),
+         call. = FALSE)
+  }
+
+  dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
+
   con_out <- file(output_file, open = "wb")
   close_out <- TRUE
-  on.exit(if (close_out) close(con_out), add = TRUE)
-  for (f in files) {
-    con_in <- file(f, open = "rb")
-    on.exit(close(con_in), add = TRUE)
+  on.exit({
+    if (close_out && isOpen(con_out)) close(con_out)
+  }, add = TRUE)
+
+  copy_one <- function(path) {
+    con_in <- file(path, open = "rb")
+    on.exit({
+      if (isOpen(con_in)) close(con_in)
+    }, add = TRUE)
+
     repeat {
-      buf <- readBin(con_in, what = "raw", n = 1024 * 1024)
+      buf <- readBin(con_in, what = "raw", n = buffer_size)
       if (!length(buf)) break
       writeBin(buf, con_out)
     }
-    close(con_in)
+
+    invisible(NULL)
   }
+
+  for (path in files) {
+    copy_one(path)
+  }
+
   close(con_out)
   close_out <- FALSE
-  if (!file.exists(output_file) || file.info(output_file)$size == 0) {
+
+  if (!file.exists(output_file) ||
+      is.na(file.info(output_file)$size) ||
+      file.info(output_file)$size == 0) {
     stop("Fragment concatenation produced an empty output file.", call. = FALSE)
   }
   invisible(output_file)
@@ -247,6 +281,7 @@ transform_fragment_file_parallel <- function(input_file,
 #' @param bgzip_path optional path to bgzip
 #' @param tabix_path optional path to tabix
 #' @param returnOutputFileName whether to return the new fragment file name
+#' @param return_details whether to return a structured list with output files and per-file metacell counts
 #' @param keep_unmatched whether to keep fragments whose barcode is absent from membership
 #' @importFrom foreach %dopar%
 #' @export
@@ -260,6 +295,7 @@ AggregateFragmentFile <- function(input_file,
                                   bgzip_path = NULL,
                                   tabix_path = NULL,
                                   returnOutputFileName = TRUE,
+                                  return_details = FALSE,
                                   keep_unmatched = FALSE) {
   membership <- .SCNormalizeMembership(membership)
   commands <- .SCFragmentCommands(bgzip_path = bgzip_path, tabix_path = tabix_path)
@@ -315,7 +351,7 @@ AggregateFragmentFile <- function(input_file,
     tmp <- tmp[!is.na(tmp$V4) & tmp$V4 != "NA", ]
     out <- paste0(fragment, "_up")
     data.table::fwrite(tmp, out, quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t")
-    list(file = out, n = nrow(tmp))
+    list(file = out, n = nrow(tmp), metacell_ids = unique(as.character(tmp$V4)))
   }
 
   message("Start fragment barcode update")
@@ -332,6 +368,10 @@ AggregateFragmentFile <- function(input_file,
   matched_rows <- sum(vapply(update_results, function(x) x$n, integer(1)))
   if (matched_rows == 0L) {
     stop("No fragment barcodes matched the supplied membership. Check barcode prefixes and sample mapping.", call. = FALSE)
+  }
+  matched_metacell_ids <- sort(unique(unlist(lapply(update_results, `[[`, "metacell_ids"), use.names = FALSE)))
+  if (!length(matched_metacell_ids)) {
+    stop("No metacell barcodes were written to the aggregated fragment file.", call. = FALSE)
   }
   up_files <- vapply(update_results, function(x) x$file, character(1))
 
@@ -354,8 +394,19 @@ AggregateFragmentFile <- function(input_file,
   }
   .SCValidateAggregatedFragments(full_output_name, expected_cells = unique(membership), bgzip_path = commands$bgzip)
 
-  if (returnOutputFileName) {
-    return(full_output_name)
+  details <- list(
+    fragment_file = normalizePath(full_output_name, mustWork = TRUE),
+    index_file = normalizePath(paste0(full_output_name, ".tbi"), mustWork = TRUE),
+    metacell_ids = matched_metacell_ids,
+    n_metacells = length(matched_metacell_ids),
+    n_fragment_rows = matched_rows
+  )
+
+  if (isTRUE(return_details)) {
+    return(details)
   }
-  invisible(full_output_name)
+  if (isTRUE(returnOutputFileName)) {
+    return(details$fragment_file)
+  }
+  invisible(details$fragment_file)
 }

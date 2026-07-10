@@ -91,3 +91,60 @@ test_that("AggregateFragmentFile maps unique sample-prefixed membership to bare 
   got <- data.table::fread(cmd = paste("bgzip -dc", shQuote(out)))
   expect_setequal(unique(got[[4]]), c("MC1", "MC2"))
 })
+
+test_that(".SCCopyFilesBinary concatenates chunks without invalid connections", {
+  td <- tempfile("copy_chunks_")
+  dir.create(td)
+
+  files <- file.path(td, paste0("chunk_", 1:3))
+  writeBin(charToRaw("abc"), files[[1]])
+  writeBin(charToRaw("def"), files[[2]])
+  writeBin(charToRaw("ghi"), files[[3]])
+
+  out <- file.path(td, "combined.bin")
+
+  expect_silent(
+    SuperCell:::.SCCopyFilesBinary(files, out, buffer_size = 2L)
+  )
+
+  con <- file(out, open = "rb")
+  on.exit(close(con), add = TRUE)
+  got <- readBin(con, what = "raw", n = file.info(out)$size)
+
+  expect_identical(rawToChar(got), "abcdefghi")
+})
+
+test_that("AggregateFragmentFile returns per-file details with forced chunk splitting", {
+  skip_if(Sys.which("bgzip") == "")
+  skip_if(Sys.which("tabix") == "")
+
+  td <- tempfile("fragments_details_")
+  dir.create(td)
+  fragment_tsv <- file.path(td, "fragments_details.tsv")
+  writeLines(c(
+    "chr1\t100\t150\tcell1\t1",
+    "chr1\t200\t240\tcell2\t1",
+    "chr1\t300\t340\tcell3\t1"
+  ), fragment_tsv)
+  system2("bgzip", c("-f", fragment_tsv))
+  input <- paste0(fragment_tsv, ".gz")
+
+  details <- SuperCell:::AggregateFragmentFile(
+    input_file = input,
+    membership = c("cell1" = "MC1", "cell2" = "MC1", "cell3" = "MC2"),
+    output_name = "mc_fragments_details.tsv.gz",
+    output_path = td,
+    tmp_path = file.path(td, "tmp"),
+    nb_row_split = 1L,
+    nb_cl = 1L,
+    return_details = TRUE
+  )
+
+  expect_true(file.exists(details$fragment_file))
+  expect_true(file.exists(details$index_file))
+  expect_identical(details$metacell_ids, c("MC1", "MC2"))
+  expect_identical(details$n_metacells, 2L)
+  expect_identical(details$n_fragment_rows, 3L)
+  got <- data.table::fread(cmd = paste("bgzip -dc", shQuote(details$fragment_file)))
+  expect_setequal(unique(got[[4]]), c("MC1", "MC2"))
+})
