@@ -101,7 +101,9 @@ ComputeMultimodalKnn <- function(seurat,
                                  dims = list(c(1:30),c(1:30)),
                                  label = NULL,
                                  subsetLabel = NULL,
+                                 fallback = c("stop", "complete_graph"),
                                  verbose = FALSE) {
+  fallback <- match.arg(fallback)
   kernelOri <- kernel
   if (!is.null(subsetLabel) & !is.null(label)) {
     seurat <- seurat[,seurat[[label]][,1] == subsetLabel]
@@ -124,40 +126,60 @@ ComputeMultimodalKnn <- function(seurat,
       knn.range = 200
     }
     # print(knn.range)
-    searchingMn <- T
-    # sometimes knn.range need to be decrease by more than the number of cells 
-    while (searchingMn) {
-      
-      # print("k.knn:")
-      # print(k.knn)
-      # print("knn.range:")
-      # print(knn.range)
-      searchingMn <- F
-      tryCatch( { seurat <- Seurat::FindMultiModalNeighbors(seurat,
-                                                            reduction = reduction,
-                                                            dims = dims,
-                                                            k.nn = k.knn,
-                                                            knn.range = knn.range,
-                                                            verbose = verbose) }
-                , error = function(e) {searchingMn <<- T})
-      knn.range <- knn.range - 1
-      if(k.knn >= knn.range & searchingMn) {
-        k.knn <- knn.range - 1
-      }
-      
-      #if we cannot compute multimodal neighbors with seurat we make a complete graph
-      if (k.knn < 1) {
-        # print(subsetLabel)
-        complete <- TRUE
-        kernel <- FALSE
-        kernelOri <- TRUE
-        seurat@graphs[[paste0("w", graph.name)]] <- as.Graph(matrix(data = 1,
-                                                                    nrow = ncol(seurat),
-                                                                    ncol = ncol(seurat),
-                                                                    dimnames = list(colnames(seurat),colnames(seurat))))
+    last_error <- NULL
+    found_neighbors <- FALSE
+    # sometimes knn.range needs to be decreased for small subsets
+    while (knn.range > 1L && k.knn >= 1L && !found_neighbors) {
+      fit <- tryCatch(
+        Seurat::FindMultiModalNeighbors(seurat,
+                                        reduction = reduction,
+                                        dims = dims,
+                                        k.nn = k.knn,
+                                        knn.range = knn.range,
+                                        verbose = verbose),
+        error = function(e) {
+          last_error <<- e
+          NULL
+        }
+      )
+      if (!is.null(fit)) {
+        seurat <- fit
+        found_neighbors <- TRUE
         break
       }
-      
+
+      message_text <- conditionMessage(last_error)
+      retryable <- grepl("k\\.nn|knn\\.range|neighbor|number of cells|more than|fewer|less than",
+                         message_text, ignore.case = TRUE)
+      if (!retryable) {
+        stop("FindMultiModalNeighbors failed: ", message_text, call. = FALSE)
+      }
+
+      knn.range <- knn.range - 1L
+      if (k.knn >= knn.range) {
+        k.knn <- knn.range - 1L
+      }
+    }
+
+    if (!found_neighbors) {
+      message_text <- if (is.null(last_error)) {
+        "unable to find valid k.nn/knn.range values"
+      } else {
+        conditionMessage(last_error)
+      }
+      if (fallback != "complete_graph") {
+        stop("FindMultiModalNeighbors failed after reducing neighbor parameters: ",
+             message_text, call. = FALSE)
+      }
+      warning("FindMultiModalNeighbors failed; using a complete graph because fallback = 'complete_graph'. ",
+              "This graph does not represent a learned multimodal neighborhood.",
+              call. = FALSE)
+      kernel <- FALSE
+      kernelOri <- TRUE
+      seurat@graphs[[paste0("w", graph.name)]] <- as.Graph(matrix(data = 1,
+                                                                  nrow = ncol(seurat),
+                                                                  ncol = ncol(seurat),
+                                                                  dimnames = list(colnames(seurat),colnames(seurat))))
     }
     
     if (verbose) {message("multimodal neighbors found")}
@@ -479,4 +501,4 @@ ExpandMetacellSeurat <- function(metacell.sobj,
   expanded.sobj[[assay]]@counts <- expanded.counts
   Idents(expanded.sobj) <- Idents(metacell.sobj)
   return(expanded.sobj)
-} 
+}

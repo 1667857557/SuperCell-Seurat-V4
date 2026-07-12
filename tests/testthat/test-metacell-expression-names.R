@@ -44,3 +44,32 @@ test_that("MetacellExpression maps named metacell.names by grouping level", {
   expect_equal(as.numeric(out["gene1", "MC1"]), 1)
   expect_equal(as.numeric(out["gene1", "MC2"]), 10)
 })
+
+test_that("MetacellExpression preserves a single grouping level", {
+  skip_if_not_installed("Seurat")
+
+  counts <- Matrix::Matrix(
+    matrix(
+      1:12,
+      nrow = 3,
+      dimnames = list(
+        paste0("g", 1:3),
+        paste0("c", 1:4)
+      )
+    ),
+    sparse = TRUE
+  )
+
+  object <- Seurat::CreateSeuratObject(counts = counts)
+  object$metacell_g20 <- "MC1"
+
+  out <- MetacellExpression(
+    object,
+    assays = "RNA",
+    group.by = "metacell_g20",
+    metacell.names = c(MC1 = "MC1"),
+    return.seurat = FALSE
+  )
+
+  expect_identical(colnames(out$RNA), "MC1")
+})

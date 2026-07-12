@@ -1,3 +1,24 @@
+.SCResolveTargetMetacells <- function(n_cells, gamma) {
+  if (n_cells < 2L) {
+    stop("At least two cells are required to identify metacells.", call. = FALSE)
+  }
+  gamma <- suppressWarnings(as.numeric(gamma[1L]))
+  if (!is.finite(gamma) || gamma <= 0) {
+    stop("`gamma` must be a positive finite number.", call. = FALSE)
+  }
+  n_target <- floor(n_cells / gamma)
+  n_target <- max(1L, min(as.integer(n_target), as.integer(n_cells)))
+  if (n_target == 1L) {
+    warning("The requested gamma produces one metacell for ", n_cells,
+            " cells. This is valid for aggregation but provides no within-stratum variability.",
+            call. = FALSE)
+  } else if (n_target < 5L) {
+    warning("Very few metacells will be generated; downstream correlation or differential analysis may be unstable.",
+            call. = FALSE)
+  }
+  n_target
+}
+
 #' SCimplify_for_Seurat
 #'
 #' \code{SCimplify_for_Seurat}
@@ -207,14 +228,16 @@ SCimplify_for_Seurat <- function(seurat,
     }
     walktrap <- igraph::cluster_walktrap(graph)
     seurat[[paste0("walktrap_clusters_", assay[[1]])]] <- walktrap$membership
-    membership <- igraph::cut_at(walktrap, no = floor(ncol(seurat)/gamma))
+    n_target <- .SCResolveTargetMetacells(n_cells = ncol(seurat), gamma = gamma)
+    membership <- igraph::cut_at(walktrap, no = n_target)
     names(membership) <- colnames(seurat)
     message("metacells identified")
   }
   else {
     if (is.null(membership) & !is.null(seurat.mc)) {
       walktrap <- seurat.mc@misc$metacells_hierarchy
-      membership <- igraph::cut_at(walktrap, no = floor(ncol(seurat)/gamma))
+      n_target <- .SCResolveTargetMetacells(n_cells = ncol(seurat), gamma = gamma)
+      membership <- igraph::cut_at(walktrap, no = n_target)
       names(membership) <- colnames(seurat)
     }
     else {
@@ -490,5 +513,3 @@ SCimplify_for_Seurat <- function(seurat,
 #' @import Seurat
 #' @export
 SCimplify_for_Seurat_v5 <- SCimplify_for_Seurat
-
-
