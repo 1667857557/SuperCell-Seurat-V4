@@ -49,12 +49,13 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
     message("Removing cells with NA for 1 or more grouping variables")
     object <- subset(x = object, cells = rownames(x = data))
   }
-  for (i in 1:ncol(x = data)) {
+  original.data <- data
+  for (i in seq_len(ncol(x = data))) {
     data[, i] <- as.factor(x = data[, i])
   }
-  num.levels <- sapply(X = 1:ncol(x = data), FUN = function(i) {
+  num.levels <- vapply(X = seq_len(ncol(x = data)), FUN = function(i) {
     length(x = levels(x = data[, i]))
-  })
+  }, integer(1))
   if (any(num.levels == 1)) {
     message(paste0("The following grouping variables have 1 value and will be ignored: ",
                    paste0(colnames(x = data)[which(num.levels <= 1)],
@@ -63,9 +64,19 @@ MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, f
     data <- data[, which(num.levels > 1), drop = F]
   }
   if (ncol(x = data) == 0) {
-    message("All grouping variables have 1 value only. Computing across all cells.")
+    single.levels <- vapply(original.data, function(x) {
+      values <- unique(as.character(x))
+      values <- values[!is.na(values) & nzchar(values)]
+      if (length(values) != 1L) {
+        stop("Unable to resolve a unique grouping level.", call. = FALSE)
+      }
+      values[[1L]]
+    }, character(1))
+    group.key <- paste0(rev(x = single.levels), collapse = "_")
+    message("All grouping variables have 1 value only. Computing across all cells as ", group.key, ".")
     category.matrix <- matrix(data = 1, nrow = ncol(x = object),
-                              dimnames = list(Cells(x = object), "all"))
+                              ncol = 1,
+                              dimnames = list(Cells(x = object), group.key))
     if (pb.method == "average") {
       category.matrix <- category.matrix/sum(category.matrix)
     }
