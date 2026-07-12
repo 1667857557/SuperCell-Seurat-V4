@@ -96,7 +96,7 @@ expr <- MetacellExpression(
   object = bmcite_HumanHTO7,
   assays = "RNA",
   group.by = "partial_annotation",
-  layer = "counts",
+  slot = "counts",
   return.seurat = FALSE
 )[["RNA"]]
 

@@ -3,8 +3,8 @@
 #' \code{MetacellExpression} 
 #' Compute metacells from a Seurat single-cell object. 
 #' @param object A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
-#' @param slot Backward-compatible assay slot to aggregate.
-#' @param layer Assay layer to aggregate for Seurat v5 callers; overrides `slot` when provided.
+#' @param slot Seurat v4-style assay slot to aggregate; defaults to `"counts"`.
+#' @param layer Optional Seurat v5 compatibility argument; overrides `slot` only when provided.
 #' @param metacell.names optional output metacell names; defaults to the grouping levels.
 #' @return  A Seurat object with aggregated data
 #' @import Seurat

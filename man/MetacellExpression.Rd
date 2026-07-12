@@ -22,9 +22,9 @@ MetacellExpression(
 \arguments{
 \item{object}{A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells}
 
-\item{slot}{Backward-compatible assay slot to aggregate.}
+\item{slot}{Seurat v4-style assay slot to aggregate; defaults to `"counts"`.}
 
-\item{layer}{Assay layer to aggregate for Seurat v5 callers; overrides `slot` when provided.}
+\item{layer}{Optional Seurat v5 compatibility argument; overrides `slot` only when provided.}
 
 \item{metacell.names}{optional output metacell names; defaults to the grouping levels.}
 }
