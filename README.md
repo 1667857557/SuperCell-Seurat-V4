@@ -77,7 +77,7 @@ mat <- MetacellExpression(
   object = obj,
   assays = "RNA",
   group.by = "metacell_id",
-  slot = "counts",
+  layer = "counts",
   return.seurat = FALSE
 )[["RNA"]]
 ```

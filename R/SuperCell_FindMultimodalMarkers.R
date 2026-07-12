@@ -105,7 +105,7 @@ FindMultimodalMarkers.SuperCell <- function(seurat.obj, group.by = 'celltype',
       by = "gene"
     )
 
-    X <- as(GetAssayData(seurat.obj, assay = assay1), "dgCMatrix")
+    X <- as(.sc_get_assay_data(seurat.obj, assay = assay1, slot = "data"), "dgCMatrix")
     y <- factor(ifelse(seurat.obj@meta.data[, group.by] == celltype, celltype, "other"))
     group.size <- as.numeric(table(y))
     n1n2 <- group.size * (ncol(X) - group.size)
@@ -113,7 +113,7 @@ FindMultimodalMarkers.SuperCell <- function(seurat.obj, group.by = 'celltype',
     ustat <- presto:::compute_ustat(rank_res$X_ranked, y, n1n2, group.size)
     auc.rna <- t(ustat/n1n2)[,1]
 
-    X <- as(GetAssayData(seurat.obj, assay = assay2), "dgCMatrix")
+    X <- as(.sc_get_assay_data(seurat.obj, assay = assay2, slot = "data"), "dgCMatrix")
     rank_res <- presto::rank_matrix(Matrix::t(X[multimodal.markers[, paste0(assay2, ".gene")],]))
     ustat <- presto:::compute_ustat(rank_res$X_ranked, y, n1n2, group.size)
     auc.motif <- t(ustat/n1n2)[,1]

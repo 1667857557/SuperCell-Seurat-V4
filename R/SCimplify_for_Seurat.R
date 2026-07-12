@@ -1,3 +1,24 @@
+.SCResolveTargetMetacells <- function(n_cells, gamma) {
+  if (n_cells < 2L) {
+    stop("At least two cells are required to identify metacells.", call. = FALSE)
+  }
+  gamma <- suppressWarnings(as.numeric(gamma[1L]))
+  if (!is.finite(gamma) || gamma <= 0) {
+    stop("`gamma` must be a positive finite number.", call. = FALSE)
+  }
+  n_target <- floor(n_cells / gamma)
+  n_target <- max(1L, min(as.integer(n_target), as.integer(n_cells)))
+  if (n_target == 1L) {
+    warning("The requested gamma produces one metacell for ", n_cells,
+            " cells. This is valid for aggregation but provides no within-stratum variability.",
+            call. = FALSE)
+  } else if (n_target < 5L) {
+    warning("Very few metacells will be generated; downstream correlation or differential analysis may be unstable.",
+            call. = FALSE)
+  }
+  n_target
+}
+
 #' SCimplify_for_Seurat
 #'
 #' \code{SCimplify_for_Seurat}
@@ -207,14 +228,16 @@ SCimplify_for_Seurat <- function(seurat,
     }
     walktrap <- igraph::cluster_walktrap(graph)
     seurat[[paste0("walktrap_clusters_", assay[[1]])]] <- walktrap$membership
-    membership <- igraph::cut_at(walktrap, no = floor(ncol(seurat)/gamma))
+    n_target <- .SCResolveTargetMetacells(n_cells = ncol(seurat), gamma = gamma)
+    membership <- igraph::cut_at(walktrap, no = n_target)
     names(membership) <- colnames(seurat)
     message("metacells identified")
   }
   else {
     if (is.null(membership) & !is.null(seurat.mc)) {
       walktrap <- seurat.mc@misc$metacells_hierarchy
-      membership <- igraph::cut_at(walktrap, no = floor(ncol(seurat)/gamma))
+      n_target <- .SCResolveTargetMetacells(n_cells = ncol(seurat), gamma = gamma)
+      membership <- igraph::cut_at(walktrap, no = n_target)
       names(membership) <- colnames(seurat)
     }
     else {
@@ -351,19 +374,19 @@ SCimplify_for_Seurat <- function(seurat,
       if (avg.in.data) {
         std.assay.list <- list()
 
-        for (assay in assaysToAgg[!isChromAssay]) {
-          std.assay.list[[assay]] <- .sc_create_assay_object(counts = MetacellExpression(seurat,
-                                                                                    assays = assay,
+        for (assay_name in assaysToAgg[!isChromAssay]) {
+          std.assay.list[[assay_name]] <- .sc_create_assay_object(counts = MetacellExpression(seurat,
+                                                                                    assays = assay_name,
                                                                                     group.by = paste0("metacell_g", gamma),
                                                                                     metacell.names = metacell_name_map,
                                                                                     #layer = "counts",
-                                                                                    return.seurat = F)[[assay]],
+                                                                                    return.seurat = F)[[assay_name]],
                                                         data =  MetacellExpression(seurat,
-                                                                                   assays = assay, pb.method = "average",
+                                                                                   assays = assay_name, pb.method = "average",
                                                                                    group.by = paste0("metacell_g", gamma),
                                                                                    metacell.names = metacell_name_map,
                                                                                    layer = "data",
-                                                                                   return.seurat = F)[[assay]]
+                                                                                   return.seurat = F)[[assay_name]]
           )
         }
 
@@ -469,26 +492,3 @@ SCimplify_for_Seurat <- function(seurat,
   }
   return(seurat.mc)
 }
-
-
-#' SCimplify_for_Seurat_v5
-#'
-#' \code{SCimplify_for_Seurat_v5}
-#' Copy of SCimplify_for_Seurat for nmanuscript workflow compatibility
-#' Build metacells from a Seurat single-cell object.
-#' @param seurat A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
-#' @param sobj.mc A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.
-#' @param gamma graining level.
-#' @param assay a list of one or two assays to use to build the knn graph on which metacell are identified.
-#' @param reduction a list of corresponding reduction name in the seurat single cell object.
-#' @param dims a list of corresponding dimensions to use.
-#' @param membership a vector of metacell membership as in SuperCell v1 to use to directly aggregate the data (optionnal).
-#' @return  A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
-#' @examples
-#' sobj.mc <- SCimplify_for_Seurat_v5(seurat = pbmc,
-#'                          gamma = 30)
-#' @import Seurat
-#' @export
-SCimplify_for_Seurat_v5 <- SCimplify_for_Seurat
-
-
