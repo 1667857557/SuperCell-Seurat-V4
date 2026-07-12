@@ -13,15 +13,11 @@
 #' 
 
 MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, features = NULL,
-                               return.seurat = TRUE, group.by = "ident", add.ident = NULL,
+                               return.seurat = TRUE, group.by = "ident",
                                slot = "counts", layer = NULL, metacell.names = NULL, verbose = TRUE, ...)
 {
   if (!is.null(layer)) slot <- layer
   SeuratObject::CheckDots(..., fxns = "CreateSeuratObject")
-  if (!is.null(x = add.ident)) {
-    .Deprecated(msg = "'add.ident' is a deprecated argument, please use the 'group.by' argument instead")
-    group.by <- c("ident", add.ident)
-  }
   if (!(pb.method %in% c("average", "aggregate"))) {
     stop("'pb.method' must be either 'average' or 'aggregate'")
   }

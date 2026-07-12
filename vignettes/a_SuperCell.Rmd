@@ -61,9 +61,10 @@ bm_mc <- SCimplify_for_Seurat(
 
 bm_mc
 head(FetchData(bm_mc, c("size", "celltype.l1", "celltype.l1_purity")))
+validate_metacell_output(bm_mc)
 ```
 
-The output is a Seurat metacell object. It stores metacell size in `size`, aggregated categorical metadata, purity columns, and run metadata in `bm_mc@misc`.
+The output is a Seurat metacell object. It stores metacell size in `size`, aggregated categorical metadata, purity columns, and run metadata in `bm_mc@misc`. `validate_metacell_output()` checks the expected metacell object contract after construction.
 
 ## 4. Optional semi-supervision
 
@@ -133,3 +134,7 @@ AggregateFragmentFile(
   nb_cl = 4
 )
 ```
+
+When `SCimplify_for_Seurat()` writes metacell fragments, run
+`validate_metacell_output(mc, require_fragments = TRUE)` to check the
+fragment manifest and object-level metacell IDs.

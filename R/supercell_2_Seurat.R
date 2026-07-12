@@ -19,14 +19,12 @@
 #'
 #' @details
 #' Since the input of \link[Seurat]{CreateSeuratObject} should be unnormalized count matrix (UMIs or TPMs, see \link[Seurat]{CreateSeuratObject}).
-#' Thus, we manually set field \code{`assays$RNA@data`} to \code{SC.GE} if \code{is.log.normalized == TRUE}.
-#' Avoid running \link[Seurat]{NormalizeData} for the obtained Seurat object, otherwise this will overwrite field \code{`assays$RNA@data`}.
-#' If you have run \link[Seurat]{NormalizeData}, then make sure to replace \code{`assays$RNA@data`} with correct matrix by running
-#' \code{`your_seurat@assays$RNA@data <- your_seurat@assays$RNA@counts`}.
+#' Thus, when \code{is.log.normalized == TRUE}, the RNA data slot is populated with \code{SC.GE} through the package Seurat compatibility helpers.
+#' Avoid running \link[Seurat]{NormalizeData} for the obtained Seurat object unless you intentionally want Seurat to recompute that data slot.
 #'
 #' Since super-cells have different size (consist of different number of single cells), we use sample-weighted algorithms for all
 #'  possible steps of the downstream analysis, including scaling and dimensionality reduction. Thus, generated Seurat object  comes
-#'  with the results of sample-wighted scaling (available as \code{`your_seurat@assays$RNA@scale.data`} or
+#'  with the results of sample-wighted scaling (available in the RNA assay scale-data slot or
 #'   \code{`your_seurat@assays$RNA@misc[["scale.data.weighted"]]`} to reproduce if the first one has been overwritten) and PCA (available as
 #' \code{`your_seurat@reductions$pca`} or \code{`your_seurat@reductions$pca_weighted`} to reproduce if the first one has been overwritten).
 #'

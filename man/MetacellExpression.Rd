@@ -11,7 +11,6 @@ MetacellExpression(
   features = NULL,
   return.seurat = TRUE,
   group.by = "ident",
-  add.ident = NULL,
   slot = "counts",
   layer = NULL,
   metacell.names = NULL,
