@@ -38,6 +38,7 @@ mc <- SCimplify_for_Seurat(
   dims = list(1:30),
   gamma = 20
 )
+validate_metacell_output(mc)
 ```
 
 Multimodal RNA + ADT metacells:
@@ -50,6 +51,7 @@ mc <- SCimplify_for_Seurat(
   dims = list(1:30, 1:18),
   gamma = 20
 )
+validate_metacell_output(mc)
 ```
 
 Optional semi-supervision uses a metadata column with labels; `NA` labels are allowed:
@@ -65,7 +67,7 @@ mc <- SCimplify_for_Seurat(
 )
 ```
 
-The returned Seurat object contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`.
+The returned Seurat object contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`. Run `validate_metacell_output(mc)` after construction to check assay colnames, metacell size metadata, optional membership tables, and optional fragment manifests.
 
 ## Metacell expression aggregation
 
@@ -115,7 +117,7 @@ mc <- SCimplify_for_Seurat(
 )
 ```
 
-`bgzip` and `tabix` must be available in `PATH` or passed with `bgzip_path` and `tabix_path`.
+`bgzip` and `tabix` must be available in `PATH` or passed with `bgzip_path` and `tabix_path`. For fragment-producing workflows, validate with `validate_metacell_output(mc, require_fragments = TRUE)`.
 
 ## Useful plotting helpers
 

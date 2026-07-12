@@ -3,8 +3,8 @@
 #' \code{MetacellExpression} 
 #' Compute metacells from a Seurat single-cell object. 
 #' @param object A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
-#' @param slot Assay slot/layer to aggregate. Use `layer` as an alias for Seurat v5 callers.
-#' @param layer Deprecated alias of `slot`; retained for Seurat v5 compatibility.
+#' @param slot Seurat v4-style assay slot to aggregate; defaults to `"counts"`.
+#' @param layer Optional Seurat v5 compatibility argument; overrides `slot` only when provided.
 #' @param metacell.names optional output metacell names; defaults to the grouping levels.
 #' @return  A Seurat object with aggregated data
 #' @import Seurat
@@ -13,15 +13,11 @@
 #' 
 
 MetacellExpression <- function(object, pb.method = "aggregate", assays = NULL, features = NULL,
-                               return.seurat = TRUE, group.by = "ident", add.ident = NULL,
+                               return.seurat = TRUE, group.by = "ident",
                                slot = "counts", layer = NULL, metacell.names = NULL, verbose = TRUE, ...)
 {
   if (!is.null(layer)) slot <- layer
   SeuratObject::CheckDots(..., fxns = "CreateSeuratObject")
-  if (!is.null(x = add.ident)) {
-    .Deprecated(msg = "'add.ident' is a deprecated argument, please use the 'group.by' argument instead")
-    group.by <- c("ident", add.ident)
-  }
   if (!(pb.method %in% c("average", "aggregate"))) {
     stop("'pb.method' must be either 'average' or 'aggregate'")
   }

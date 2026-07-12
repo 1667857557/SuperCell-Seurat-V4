@@ -274,7 +274,6 @@ SCimplify_for_Seurat <- function(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
                                                                                             metacell.names = metacell_name_map,
-                                                                                            #layer = "counts",
                                                                                             return.seurat = F)[[chromAssay]],
                                                                genome = genome(seurat[[chromAssay]]),
                                                                ranges = Signac::StringToGRanges(rownames(seurat[[chromAssay]]),
@@ -296,7 +295,6 @@ SCimplify_for_Seurat <- function(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
                                                                                             metacell.names = metacell_name_map,
-                                                                                            #layer = "counts",
                                                                                             return.seurat = F)[[chromAssay]],
                                                                genome = genome(seurat[[chromAssay]]),
                                                                ranges = Signac::StringToGRanges(rownames(seurat[[chromAssay]]),
@@ -374,19 +372,18 @@ SCimplify_for_Seurat <- function(seurat,
       if (avg.in.data) {
         std.assay.list <- list()
 
-        for (assay in assaysToAgg[!isChromAssay]) {
-          std.assay.list[[assay]] <- .sc_create_assay_object(counts = MetacellExpression(seurat,
-                                                                                    assays = assay,
+        for (assay_name in assaysToAgg[!isChromAssay]) {
+          std.assay.list[[assay_name]] <- .sc_create_assay_object(counts = MetacellExpression(seurat,
+                                                                                    assays = assay_name,
                                                                                     group.by = paste0("metacell_g", gamma),
                                                                                     metacell.names = metacell_name_map,
-                                                                                    #layer = "counts",
-                                                                                    return.seurat = F)[[assay]],
+                                                                                    return.seurat = F)[[assay_name]],
                                                         data =  MetacellExpression(seurat,
-                                                                                   assays = assay, pb.method = "average",
+                                                                                   assays = assay_name, pb.method = "average",
                                                                                    group.by = paste0("metacell_g", gamma),
                                                                                    metacell.names = metacell_name_map,
                                                                                    layer = "data",
-                                                                                   return.seurat = F)[[assay]]
+                                                                                   return.seurat = F)[[assay_name]]
           )
         }
 
@@ -402,7 +399,6 @@ SCimplify_for_Seurat <- function(seurat,
                                         assays = assaysToAgg[!isChromAssay],
                                         group.by = paste0("metacell_g", gamma),
                                         metacell.names = metacell_name_map,
-                                        #layer = "counts",
                                         return.seurat = T)
       }
       for (a in names(chrom.assay.list)) {
@@ -492,24 +488,3 @@ SCimplify_for_Seurat <- function(seurat,
   }
   return(seurat.mc)
 }
-
-
-#' SCimplify_for_Seurat_v5
-#'
-#' \code{SCimplify_for_Seurat_v5}
-#' Copy of SCimplify_for_Seurat for nmanuscript workflow compatibility
-#' Build metacells from a Seurat single-cell object.
-#' @param seurat A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
-#' @param sobj.mc A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.
-#' @param gamma graining level.
-#' @param assay a list of one or two assays to use to build the knn graph on which metacell are identified.
-#' @param reduction a list of corresponding reduction name in the seurat single cell object.
-#' @param dims a list of corresponding dimensions to use.
-#' @param membership a vector of metacell membership as in SuperCell v1 to use to directly aggregate the data (optionnal).
-#' @return  A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
-#' @examples
-#' sobj.mc <- SCimplify_for_Seurat_v5(seurat = pbmc,
-#'                          gamma = 30)
-#' @import Seurat
-#' @export
-SCimplify_for_Seurat_v5 <- SCimplify_for_Seurat

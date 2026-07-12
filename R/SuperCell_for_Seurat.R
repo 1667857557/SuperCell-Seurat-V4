@@ -87,10 +87,6 @@ ComputeUnimodalKnn <- function(seurat,
 }
 
 
-ComputeUnimodalKnn_v5 <- ComputeUnimodalKnn
-
-
-
 ComputeMultimodalKnn <- function(seurat, 
                                  k.knn = 30, 
                                  kith = NULL, 
@@ -413,7 +409,7 @@ supercell_FeatureFeaturePlot_Seurat <- function(seurat.mc,
     }
   }
   
-  fe1 <- Seurat::GetAssayData(seurat.mc,slot = "data",assay = assays[1])[feature_x,]
+  fe1 <- .sc_get_assay_data(seurat.mc, slot = "data", assay = assays[1])[feature_x,]
   
   feature_x <- paste0(tolower(assays[1]),"_",feature_x)
   
@@ -434,7 +430,7 @@ supercell_FeatureFeaturePlot_Seurat <- function(seurat.mc,
     }
   }
   
-  fe2 <- Seurat::GetAssayData(seurat.mc,slot = "data",assay = assays[2])[feature_y,]
+  fe2 <- .sc_get_assay_data(seurat.mc, slot = "data", assay = assays[2])[feature_y,]
   
   rownames(fe2) <- feature_y
   
@@ -479,13 +475,13 @@ ExpandMetacellSeurat <- function(metacell.sobj,
                                  meta.data.vars = c('celltype',"input","method")) {
   membership <- rep(1:ncol(metacell.sobj), metacell.sobj$size)
   DefaultAssay(metacell.sobj) <- assay
-  feature.data <- GetAssayData(
+  feature.data <- .sc_get_assay_data(
     object = metacell.sobj, assay = assay, slot = "data"
   )
-  feature.counts <- GetAssayData(
+  feature.counts <- .sc_get_assay_data(
     object = metacell.sobj, assay = assay, slot = "counts"
   )
-  meta.data <- FetchData(metacell.sobj,vars = meta.data.vars)
+  meta.data <- Seurat::FetchData(metacell.sobj, vars = meta.data.vars)
   expanded.meta.data <- meta.data[membership,]
   
   feature.data <- feature.data[features,]
@@ -497,8 +493,8 @@ ExpandMetacellSeurat <- function(metacell.sobj,
   colnames(expanded.counts) <- rownames(expanded.meta.data)
   
   #colnames(expanded.data) <- colnames(expanded.data)
-  expanded.sobj <- .sc_create_seurat_object(counts = expanded.data, meta.data = expanded.meta.data, assay = assay)
-  expanded.sobj[[assay]]@counts <- expanded.counts
+  expanded.sobj <- .sc_create_seurat_object(counts = expanded.counts, meta.data = expanded.meta.data, assay = assay)
+  expanded.sobj <- .sc_set_assay_data(expanded.sobj, new.data = expanded.data, assay = assay, slot = "data")
   Idents(expanded.sobj) <- Idents(metacell.sobj)
   return(expanded.sobj)
 }

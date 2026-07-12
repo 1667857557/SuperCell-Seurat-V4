@@ -1,7 +1,7 @@
 # peak <-"chr2-99156963-99157162"
 # gene <- "AFF3"
-# fe_y <- GetAssayData(pbmc.supercell.multi.g20,assay = "RNA",slot = "data")[gene,] 
-# fe_x <-  GetAssayData(pbmc.supercell.multi.g20,assay = "peaks_log_norm",slot = "data")[peak,] 
+# fe_y <- .sc_get_assay_data(pbmc.supercell.multi.g20, assay = "RNA", slot = "data")[gene,]
+# fe_x <- .sc_get_assay_data(pbmc.supercell.multi.g20, assay = "peaks_log_norm", slot = "data")[peak,]
 # supercell_size <- pbmc.supercell.multi.g20$size
 #   
 # weightedCorr <- function(fe_x,fe_y,supercell_size) {
@@ -130,9 +130,7 @@ SuperCellLinkPeaks <- function(
       ranges = annot
     )
   }
-  meta.features <- GetAssayData(
-    object = object, assay = peak.assay, slot = "meta.features"
-  )
+  meta.features <- object[[peak.assay]][[]]
   if (!(all(
     c("GC.percent", "sequence.length") %in% colnames(x = meta.features)
   ))) {

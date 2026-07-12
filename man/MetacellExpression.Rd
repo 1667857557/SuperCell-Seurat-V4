@@ -11,7 +11,6 @@ MetacellExpression(
   features = NULL,
   return.seurat = TRUE,
   group.by = "ident",
-  add.ident = NULL,
   slot = "counts",
   layer = NULL,
   metacell.names = NULL,
@@ -22,9 +21,9 @@ MetacellExpression(
 \arguments{
 \item{object}{A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells}
 
-\item{slot}{Assay slot/layer to aggregate. Use `layer` as an alias for Seurat v5 callers.}
+\item{slot}{Seurat v4-style assay slot to aggregate; defaults to `"counts"`.}
 
-\item{layer}{Deprecated alias of `slot`; retained for Seurat v5 compatibility.}
+\item{layer}{Optional Seurat v5 compatibility argument; overrides `slot` only when provided.}
 
 \item{metacell.names}{optional output metacell names; defaults to the grouping levels.}
 }
