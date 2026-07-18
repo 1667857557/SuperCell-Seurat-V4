@@ -65,6 +65,8 @@ SCimplify_for_Seurat <- function(seurat,
                                  nb_cl = NULL,
                                  verbose = FALSE)
 {
+  library(Signac)
+  library(Seurat)
   seed <- as.integer(seed)[1L]
   if (!is.finite(seed)) stop("`seed` must be a finite integer.", call. = FALSE)
   old_random_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
