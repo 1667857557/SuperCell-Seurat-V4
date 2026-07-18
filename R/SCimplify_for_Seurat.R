@@ -270,7 +270,7 @@ SCimplify_for_Seurat <- function(seurat,
 
     for (chromAssay in assaysToAgg[isChromAssay]) {
       if (avg.in.data) {
-        chrom.assay.list[[chromAssay]] <- CreateChromatinAssay(counts =  MetacellExpression(seurat,
+        chrom.assay.list[[chromAssay]] <- Signac::CreateChromatinAssay(counts =  MetacellExpression(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
                                                                                             metacell.names = metacell_name_map,
@@ -291,7 +291,7 @@ SCimplify_for_Seurat <- function(seurat,
           slot = "data"
         )
       } else {
-        chrom.assay.list[[chromAssay]] <- CreateChromatinAssay(counts =  MetacellExpression(seurat,
+        chrom.assay.list[[chromAssay]] <- Signac::CreateChromatinAssay(counts =  MetacellExpression(seurat,
                                                                                             assays = chromAssay,
                                                                                             group.by = paste0("metacell_g", gamma),
                                                                                             metacell.names = metacell_name_map,
