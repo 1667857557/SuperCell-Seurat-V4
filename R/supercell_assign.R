@@ -10,44 +10,61 @@
 #'   \item absolute - assignes super-cell to cluster with the maximum absolute abundance within super-cell, may result in disappearence of poorly represented (small) clusters
 #' }
 #'
-#' @return a vector of super-cell assignment to clusters
+#' @return a named vector of super-cell assignments. Super-cells whose cells all
+#'   have missing cluster labels are retained and assigned `NA`.
 #'
 #' @export
 #'
 
 
 supercell_assign <- function(clusters, supercell_membership, method = c("jaccard", "relative", "absolute")){
-  cl.gr            <- table(clusters, supercell_membership)
-  cluster.size     <- as.numeric(table(clusters))
-  group.size       <- as.numeric(table(supercell_membership))
-
-  if(is.null(method[1]) | is.na(method[1]) | is.nan(method[1])){
-    stop(paste("Please specify method: jaccard (recommended), relative or absolute"))
+  method <- method[[1L]]
+  if (is.null(method) || is.na(method) || !(method %in% c("jaccard", "relative", "absolute"))) {
+    stop("Unknown assignment method; use jaccard, relative or absolute.", call. = FALSE)
+  }
+  if (length(clusters) != length(supercell_membership)) {
+    stop("`clusters` and `supercell_membership` must have the same length.", call. = FALSE)
   }
 
-  if(method[1] == "jaccard"){
+  membership_values <- as.character(supercell_membership)
+  membership_levels <- sort(unique(membership_values[!is.na(membership_values) & nzchar(membership_values)]))
+  if (!length(membership_levels)) {
+    return(stats::setNames(character(), character()))
+  }
+  membership_factor <- factor(membership_values, levels = membership_levels)
 
-    cl.gr          <- as.matrix(cl.gr)
-    jaccard.mtrx   <- cl.gr
+  cluster_values <- as.character(clusters)
+  cluster_levels <- sort(unique(cluster_values[!is.na(cluster_values)]))
+  result <- stats::setNames(rep(NA_character_, length(membership_levels)), membership_levels)
+  if (!length(cluster_levels)) {
+    return(result)
+  }
+  cluster_factor <- factor(cluster_values, levels = cluster_levels)
+  cl.gr <- table(cluster_factor, membership_factor)
+  observed <- Matrix::colSums(cl.gr) > 0
+  if (!any(observed)) {
+    return(result)
+  }
 
-    for(i in rownames(cl.gr)){
-      for(j in colnames(cl.gr)){
-        jaccard.mtrx[i,j] <- cl.gr[i,j] / (sum(cl.gr[i,]) +  sum(cl.gr[,j]) - cl.gr[i,j])
+  cl.use <- cl.gr[, observed, drop = FALSE]
+  if(method == "jaccard"){
+    cl.use <- as.matrix(cl.use)
+    jaccard.mtrx <- cl.use
+    for(i in rownames(cl.use)){
+      for(j in colnames(cl.use)){
+        denominator <- sum(cl.use[i,]) + sum(cl.use[,j]) - cl.use[i,j]
+        jaccard.mtrx[i,j] <- if (denominator > 0) cl.use[i,j] / denominator else 0
       }
     }
-    res              <- apply(jaccard.mtrx, 2, function(x){names(x)[which.max(x)]})
-
-  } else if(method[1] == "relative"){
-    cl.gr            <- sweep(cl.gr, 1, cluster.size, "/")
-    res              <- apply(cl.gr, 2, function(x){names(x)[which.max(x)]})
-
-  } else if(method[1] == "absolute"){
-    res              <- apply(cl.gr, 2, function(x){names(x)[which.max(x)]})
-
+    assigned <- apply(jaccard.mtrx, 2, function(x) names(x)[which.max(x)])
+  } else if(method == "relative"){
+    cluster.size <- rowSums(cl.gr)
+    cl.use <- sweep(cl.use, 1, cluster.size, "/")
+    assigned <- apply(cl.use, 2, function(x) names(x)[which.max(x)])
   } else {
-    stop(paste("Unknown value of method (", method[1] , ")", "please, use: jaccard, relative or absolute"))
+    assigned <- apply(cl.use, 2, function(x) names(x)[which.max(x)])
   }
 
-
-  return(res)
+  result[names(assigned)] <- as.character(assigned)
+  result
 }
