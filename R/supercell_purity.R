@@ -7,10 +7,8 @@
 #' \code{"max_proportion"} if the purity is defined as a proportion of the most abundant cluster (cell type) within super-cell or
 #' \code{"entropy"} if the purity is defined as the Shanon entropy of the cell types super-cell consists of.
 #'
-#' @return a vector of super-cell purity, which is defined as:
-#' - proportion of the most abundant cluster within super-cell for \code{method = "max_proportion"} or
-#' - Shanon entropy for \code{method = "entropy"}.
-#' With 1 meaning that super-cell consists of single cells from one cluster (reference assignment)
+#' @return a named vector of super-cell purity. Super-cells whose cells all have
+#'   missing cluster labels are retained and assigned `NA`.
 #'
 #' @export
 #'
@@ -20,37 +18,42 @@ supercell_purity <- function(
   supercell_membership,
   method = c("max_proportion", "entropy")[1]
 ){
-
   if(!(method %in% c("max_proportion", "entropy"))){
-    stop(paste("Method", method, "is not known. The available methods are:", paste(method, collapse = ",")))
+    stop(paste("Method", method, "is not known. The available methods are: max_proportion, entropy"))
+  }
+  if (length(clusters) != length(supercell_membership)) {
+    stop("`clusters` and `supercell_membership` must have the same length.", call. = FALSE)
   }
 
-  cl.gr            <- table(clusters, supercell_membership)
+  membership_values <- as.character(supercell_membership)
+  membership_levels <- sort(unique(membership_values[!is.na(membership_values) & nzchar(membership_values)]))
+  if (!length(membership_levels)) {
+    return(stats::setNames(numeric(), character()))
+  }
+  membership_factor <- factor(membership_values, levels = membership_levels)
 
-  switch(method,
+  cluster_values <- as.character(clusters)
+  cluster_levels <- sort(unique(cluster_values[!is.na(cluster_values)]))
+  result <- stats::setNames(rep(NA_real_, length(membership_levels)), membership_levels)
+  if (!length(cluster_levels)) {
+    return(result)
+  }
+  cluster_factor <- factor(cluster_values, levels = cluster_levels)
+  cl.gr <- table(cluster_factor, membership_factor)
+  observed <- colSums(cl.gr) > 0
+  if (!any(observed)) {
+    return(result)
+  }
+  cl.use <- cl.gr[, observed, drop = FALSE]
 
-         entropy = {
-           res <- apply(cl.gr, 2, entropy::entropy)
-         },
-
-         max_proportion = {
-           cluster.size     <- as.numeric(table(clusters))
-           group.size       <- as.numeric(table(supercell_membership))
-
-           Ng               <- length(group.size)
-           group.max.cl     <- rep(0, Ng)
-
-
-           cl.gr            <- sweep(cl.gr, 2, group.size, "/")
-
-           res              <- apply(cl.gr, 2, max)
-         },
-
-         {
-           stop(paste("Method", method, "is not known. The available methods are:", paste(method, collapse = ",")))
-         }
+  values <- switch(
+    method,
+    entropy = apply(cl.use, 2, entropy::entropy),
+    max_proportion = {
+      group.size <- colSums(cl.use)
+      apply(sweep(cl.use, 2, group.size, "/"), 2, max)
+    }
   )
-
-
-  return(res)
+  result[names(values)] <- as.numeric(values)
+  result
 }
