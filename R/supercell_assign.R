@@ -18,10 +18,10 @@
 
 
 supercell_assign <- function(clusters, supercell_membership, method = c("jaccard", "relative", "absolute")){
-  method <- method[[1L]]
-  if (is.null(method) || is.na(method) || !(method %in% c("jaccard", "relative", "absolute"))) {
+  if (!length(method) || is.na(method[[1L]]) || !(method[[1L]] %in% c("jaccard", "relative", "absolute"))) {
     stop("Unknown assignment method; use jaccard, relative or absolute.", call. = FALSE)
   }
+  method <- method[[1L]]
   if (length(clusters) != length(supercell_membership)) {
     stop("`clusters` and `supercell_membership` must have the same length.", call. = FALSE)
   }
