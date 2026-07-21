@@ -41,7 +41,7 @@ supercell_assign <- function(clusters, supercell_membership, method = c("jaccard
   }
   cluster_factor <- factor(cluster_values, levels = cluster_levels)
   cl.gr <- table(cluster_factor, membership_factor)
-  observed <- Matrix::colSums(cl.gr) > 0
+  observed <- colSums(cl.gr) > 0
   if (!any(observed)) {
     return(result)
   }
