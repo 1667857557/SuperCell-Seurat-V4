@@ -54,7 +54,9 @@ mc <- SCimplify_for_Seurat(
 validate_metacell_output(mc)
 ```
 
-Optional semi-supervision uses a metadata column with labels; `NA` labels are allowed:
+Optional label-aware construction uses any categorical metadata column. For
+example, a cell-type label prevents metacells from mixing known cell types;
+`NA` labels are allowed for partial annotation:
 
 ```r
 mc <- SCimplify_for_Seurat(
@@ -66,6 +68,21 @@ mc <- SCimplify_for_Seurat(
   gamma = 20
 )
 ```
+
+`sample_col` is not a SuperCell2 builder argument and should not be passed to
+`SCimplify_for_Seurat()`. The corresponding input depends on which SuperCell
+API is being called:
+
+- `SCimplify()` and `SCimplify_from_embedding()` take the condition vector as
+  `cell.split.condition` and the cell-type vector as `cell.annotation`.
+- `SCimplify_for_Seurat()` takes the **name** of either metadata column through
+  `label` (for example, `label = "condition"` or `label = "cell_type"`).
+
+Thus, a wrapper-level option named `condition_col` is not passed through as a
+SuperCell formal argument: a wrapper must read that column and supply its
+vector as `cell.split.condition`, or supply its column name as `label` when it
+uses the Seurat builder. If each group requires a completely independent
+construction run, split the input object and call the builder separately.
 
 The returned Seurat object contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`. Run `validate_metacell_output(mc)` after construction to check assay colnames, metacell size metadata, optional membership tables, and optional fragment manifests.
 

@@ -47,6 +47,10 @@ SCimplify_for_Seurat(
 
 \item{membership}{a vector of metacell membership as in SuperCell v1 to use to directly aggregate the data (optionnal).}
 
+\item{label}{optional metadata column used to keep labeled groups separate
+during metacell construction. This may contain condition, sample, cell-type,
+or another categorical annotation; \code{NA} values enable partial annotation.}
+
 \item{sobj.mc}{A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.}
 
 \item{return_fragment_manifest}{whether to store fragment_manifest and fragment_cell_map tables in misc.}
@@ -57,6 +61,14 @@ SCimplify_for_Seurat(
 }
 \value{
 A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
+}
+\details{
+\code{sample_col} and \code{condition_col} are not formal arguments of this
+Seurat builder. Pass a Seurat metadata column name through \code{label} when
+metacells must not mix known conditions, samples, cell types, or other
+labeled groups. The matrix builders \code{SCimplify()} and
+\code{SCimplify_from_embedding()} instead accept condition and cell-type vectors
+through \code{cell.split.condition} and \code{cell.annotation}, respectively.
 }
 \description{
 \code{SCimplify_for_Seurat} 
