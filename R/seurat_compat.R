@@ -19,7 +19,7 @@
 .sc_get_assay_data <- function(object, assay = NULL, slot = "data") {
   args <- list(object = object)
   if (!is.null(assay)) args$assay <- assay
-  if (.sc_uses_layers(object, assay)) {
+  if (.sc_seurat_v5()) {
     args$layer <- slot
   } else {
     args$slot <- slot
@@ -28,18 +28,18 @@
 }
 
 .sc_set_assay_data <- function(object, new.data, assay = NULL, slot = "data") {
-  args <- list(object = object, new.data = new.data)
-  if (!is.null(assay)) args$assay <- assay
-  if (.sc_uses_layers(object, assay)) {
-    args$layer <- slot
-    return(do.call(Seurat::SetAssayData, args))
-  }
   if (!(slot %in% c("counts", "data", "scale.data"))) {
     assay <- assay %||% Seurat::DefaultAssay(object)
     object[[assay]]@misc[[slot]] <- new.data
     return(object)
   }
-  args$slot <- slot
+  args <- list(object = object, new.data = new.data)
+  if (!is.null(assay)) args$assay <- assay
+  if (.sc_seurat_v5()) {
+    args$layer <- slot
+  } else {
+    args$slot <- slot
+  }
   do.call(Seurat::SetAssayData, args)
 }
 
@@ -47,7 +47,7 @@
   args <- list(object = object, vars = vars, ...)
   if (!is.null(cells)) args$cells <- cells
   if (!is.null(slot)) {
-    if (.sc_uses_layers(object)) args$layer <- slot else args$slot <- slot
+    if (.sc_seurat_v5()) args$layer <- slot else args$slot <- slot
   }
   do.call(Seurat::FetchData, args)
 }
