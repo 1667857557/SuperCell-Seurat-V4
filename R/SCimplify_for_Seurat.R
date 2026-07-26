@@ -30,10 +30,15 @@
 #' @param reduction a list of corresponding reduction name in the seurat single cell object.
 #' @param dims a list of corresponding dimensions to use.
 #' @param membership a vector of metacell membership as in SuperCell v1 to use to directly aggregate the data (optionnal).
-#' @details `sample_col` is not part of the SuperCell2 builder API. To build
-#' sample-specific metacells, split the input Seurat object by its sample
-#' metadata before calling this function. Use `label` only for optional
-#' semi-supervised metacell construction.
+#' @param label optional metadata column used to keep labeled groups separate
+#' during metacell construction. This may contain condition, sample, cell-type,
+#' or another categorical annotation; `NA` values enable partial annotation.
+#' @details `sample_col` and `condition_col` are not formal arguments of this
+#' Seurat builder. Pass a Seurat metadata column name through `label` when
+#' metacells must not mix known conditions, samples, cell types, or other
+#' labeled groups. The matrix builders [SCimplify()] and
+#' [SCimplify_from_embedding()] instead accept condition and cell-type vectors
+#' through `cell.split.condition` and `cell.annotation`, respectively.
 #' @return  A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
 #' @examples
 #' sobj.mc <- SCimplify_for_Seurat(seurat = pbmc,
