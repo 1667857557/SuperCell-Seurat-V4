@@ -67,6 +67,12 @@ mc <- SCimplify_for_Seurat(
 )
 ```
 
+`sample_col` is not a SuperCell2 builder argument and should not be passed to
+`SCimplify_for_Seurat()`. For per-sample construction, split the Seurat object
+by the desired sample metadata column first and call the builder on each
+resulting object. The `label` argument is reserved for optional
+semi-supervision; it does not select samples.
+
 The returned Seurat object contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`. Run `validate_metacell_output(mc)` after construction to check assay colnames, metacell size metadata, optional membership tables, and optional fragment manifests.
 
 ## Metacell expression aggregation
