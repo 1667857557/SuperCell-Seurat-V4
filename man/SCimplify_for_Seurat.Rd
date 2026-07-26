@@ -58,6 +58,12 @@ SCimplify_for_Seurat(
 \value{
 A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
 }
+\details{
+\code{sample_col} is not part of the SuperCell2 builder API. To build
+sample-specific metacells, split the input Seurat object by its sample
+metadata before calling this function. Use \code{label} only for optional
+semi-supervised metacell construction.
+}
 \description{
 \code{SCimplify_for_Seurat} 
 Build metacells from a Seurat single-cell object.
