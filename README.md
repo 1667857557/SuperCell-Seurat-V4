@@ -69,20 +69,60 @@ mc <- SCimplify_for_Seurat(
 )
 ```
 
+### Independent cell-type graphs with conditions pooled within cell type
+
+`cell.annotation` in `SCimplify()` or `SCimplify_from_embedding()` is a
+post-clustering purity constraint: those functions first build one graph over
+all supplied cells and then split mixed memberships. It does **not** create an
+independent graph for each annotation.
+
+Use `SCimplify_by_graph_group_from_embedding()` when graph scope and membership
+purity must be controlled separately. A typical paired RNA+ATAC workflow uses:
+
+```r
+rna <- Embeddings(obj[["pca"]])[, 1:30, drop = FALSE]
+atac <- Embeddings(obj[["lsi"]])[, 2:30, drop = FALSE]
+embedding <- cbind(scale(rna) / sqrt(ncol(rna)),
+                   scale(atac) / sqrt(ncol(atac)))
+
+sc <- SCimplify_by_graph_group_from_embedding(
+  X = embedding,
+  cell.graph.group = obj$cell_type,
+  cell.split.condition = obj$condition,
+  gamma = 30,
+  k.knn = 30,
+  n.pc = seq_len(ncol(embedding))
+)
+```
+
+The contract is:
+
+- one independent kNN graph is built for each `cell.graph.group` value;
+- all conditions within that graph group are jointly present during neighbour
+  search and graph clustering;
+- `cell.split.condition` is applied only after clustering, so metacells are
+  condition-pure while their local geometry is estimated on a shared
+  cross-condition graph;
+- graph-group results receive globally unique membership IDs and are combined as
+  disjoint graph components.
+
+For condition comparisons, standardize each modality within the graph group
+using all conditions together. Do not standardize separately by condition,
+because that would erase or rescale condition-associated displacement before
+neighbour construction.
+
 `sample_col` is not a SuperCell2 builder argument and should not be passed to
 `SCimplify_for_Seurat()`. The corresponding input depends on which SuperCell
 API is being called:
 
-- `SCimplify()` and `SCimplify_from_embedding()` take the condition vector as
-  `cell.split.condition` and the cell-type vector as `cell.annotation`.
-- `SCimplify_for_Seurat()` takes the **name** of either metadata column through
-  `label` (for example, `label = "condition"` or `label = "cell_type"`).
-
-Thus, a wrapper-level option named `condition_col` is not passed through as a
-SuperCell formal argument: a wrapper must read that column and supply its
-vector as `cell.split.condition`, or supply its column name as `label` when it
-uses the Seurat builder. If each group requires a completely independent
-construction run, split the input object and call the builder separately.
+- `SCimplify()` and `SCimplify_from_embedding()` accept post-clustering purity
+  vectors through `cell.annotation` and `cell.split.condition` after building
+  one graph over all supplied cells.
+- `SCimplify_by_graph_group_from_embedding()` accepts the graph partition through
+  `cell.graph.group` and the post-clustering condition purity vector through
+  `cell.split.condition`.
+- `SCimplify_for_Seurat()` takes the **name** of one metadata column through
+  `label` and builds separate label-restricted graph components.
 
 The returned Seurat object contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`. Run `validate_metacell_output(mc)` after construction to check assay colnames, metacell size metadata, optional membership tables, and optional fragment manifests.
 
