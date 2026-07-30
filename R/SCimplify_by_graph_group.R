@@ -30,6 +30,33 @@
   do.call(igraph::disjoint_union, graphs)
 }
 
+.SCRemapSupercellGraph <- function(graph, local_map, graph_level) {
+  if (!inherits(graph, "igraph")) return(graph)
+  n_vertices <- igraph::vcount(graph)
+  if (!n_vertices) return(graph)
+  vertex_names <- igraph::V(graph)$name
+  if (is.null(vertex_names)) vertex_names <- as.character(seq_len(n_vertices))
+  vertex_names <- as.character(vertex_names)
+  if (!all(vertex_names %in% names(local_map))) {
+    if (n_vertices != length(local_map)) {
+      stop(
+        "Supercell graph cannot be aligned to membership in graph group `",
+        graph_level, "`.", call. = FALSE
+      )
+    }
+    vertex_names <- names(local_map)
+  }
+  mapped <- unname(local_map[vertex_names])
+  if (anyNA(mapped) || anyDuplicated(mapped)) {
+    stop(
+      "Supercell graph has ambiguous membership IDs in graph group `",
+      graph_level, "`.", call. = FALSE
+    )
+  }
+  igraph::V(graph)$name <- as.character(mapped)
+  graph
+}
+
 #' Build independent cell graphs by annotation while pooling conditions
 #'
 #' Builds one k-nearest-neighbour graph for each value of `cell.graph.group`.
@@ -90,6 +117,32 @@ SCimplify_by_graph_group_from_embedding <- function(
       any(!nzchar(rownames(X))) || anyDuplicated(rownames(X))) {
     stop("`X` must have unique, non-empty cell IDs in row names.", call. = FALSE)
   }
+  if (!ncol(X)) stop("`X` must contain at least one component.", call. = FALSE)
+  if (any(!is.finite(X))) {
+    stop("`X` cannot contain non-finite values.", call. = FALSE)
+  }
+  gamma <- as.numeric(gamma)[1L]
+  k.knn <- as.integer(k.knn)[1L]
+  approx.N <- as.integer(approx.N)[1L]
+  block.size <- as.integer(block.size)[1L]
+  seed <- as.integer(seed)[1L]
+  n.pc <- as.integer(n.pc)
+  if (!is.finite(gamma) || gamma <= 0) {
+    stop("`gamma` must be a positive finite number.", call. = FALSE)
+  }
+  if (is.na(k.knn) || k.knn < 1L) {
+    stop("`k.knn` must be a positive integer.", call. = FALSE)
+  }
+  if (is.na(approx.N) || approx.N < 1L ||
+      is.na(block.size) || block.size < 1L) {
+    stop("`approx.N` and `block.size` must be positive integers.", call. = FALSE)
+  }
+  if (!length(n.pc) || anyNA(n.pc) || any(n.pc < 1L) ||
+      any(n.pc > ncol(X)) || anyDuplicated(n.pc)) {
+    stop("`n.pc` must contain unique valid component indices of `X`.", call. = FALSE)
+  }
+  if (!is.finite(seed)) stop("`seed` must be a finite integer.", call. = FALSE)
+
   cell_ids <- rownames(X)
   graph_group <- .SCAlignGraphGrouping(
     cell.graph.group, cell_ids, "cell.graph.group"
@@ -106,8 +159,6 @@ SCimplify_by_graph_group_from_embedding <- function(
       call. = FALSE
     )
   }
-  seed <- as.integer(seed)[1L]
-  if (!is.finite(seed)) stop("`seed` must be a finite integer.", call. = FALSE)
 
   group_results <- vector("list", length(group_levels))
   names(group_results) <- group_levels
@@ -117,12 +168,8 @@ SCimplify_by_graph_group_from_embedding <- function(
   for (i in seq_along(group_levels)) {
     graph_level <- group_levels[[i]]
     cells_i <- cell_ids[graph_group == graph_level]
-    k_i <- min(as.integer(k.knn), length(cells_i) - 1L)
-    if (k_i < 1L) {
-      stop("Graph group `", graph_level, "` cannot support kNN construction.",
-           call. = FALSE)
-    }
-    gamma_i <- min(as.numeric(gamma), length(cells_i))
+    k_i <- min(k.knn, length(cells_i) - 1L)
+    gamma_i <- min(gamma, length(cells_i))
     condition_i <- if (is.null(split_condition)) NULL else {
       unname(split_condition[cells_i])
     }
@@ -134,7 +181,7 @@ SCimplify_by_graph_group_from_embedding <- function(
       k.knn = k_i,
       n.pc = n.pc,
       do.approx = do.approx,
-      approx.N = min(as.integer(approx.N), length(cells_i)),
+      approx.N = min(approx.N, length(cells_i)),
       block.size = block.size,
       seed = seed + i - 1L,
       igraph.clustering = igraph.clustering,
@@ -159,8 +206,12 @@ SCimplify_by_graph_group_from_embedding <- function(
     )
     membership[cells_i] <- unname(local_map[local_membership])
     membership_offset <- membership_offset + length(local_levels)
+    result_i$graph.supercells <- .SCRemapSupercellGraph(
+      result_i$graph.supercells, local_map, graph_level
+    )
     result_i$graph.group <- graph_level
     result_i$input.cells <- cells_i
+    result_i$global.membership.map <- local_map
     group_results[[i]] <- result_i
   }
 
@@ -183,6 +234,7 @@ SCimplify_by_graph_group_from_embedding <- function(
       values[[1L]]
     }, character(1))
   }
+  supercell_size <- vapply(metacell_rows, length, integer(1))
 
   result <- list(
     graph.supercells = .SCDisjointGraphUnion(
@@ -191,7 +243,7 @@ SCimplify_by_graph_group_from_embedding <- function(
     gamma = gamma,
     N.SC = length(metacell_rows),
     membership = membership,
-    supercell_size = as.integer(vapply(metacell_rows, length, integer(1))),
+    supercell_size = supercell_size,
     genes.use = NA,
     simplification.algo = igraph.clustering[[1L]],
     do.approx = do.approx,
@@ -205,6 +257,13 @@ SCimplify_by_graph_group_from_embedding <- function(
     graph_scope = "independent_by_cell.graph.group",
     condition_scope = "joint_within_graph_group_then_membership_split"
   )
+  if (inherits(result$graph.supercells, "igraph")) {
+    graph_ids <- as.character(igraph::V(result$graph.supercells)$name)
+    if (!setequal(graph_ids, names(metacell_rows)) || anyDuplicated(graph_ids)) {
+      stop("Combined supercell graph is not aligned to global membership IDs.",
+           call. = FALSE)
+    }
+  }
   if (isTRUE(return.singlecell.NW)) {
     result$graph.singlecell <- .SCDisjointGraphUnion(
       lapply(group_results, `[[`, "graph.singlecell")
