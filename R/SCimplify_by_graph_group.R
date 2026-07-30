@@ -167,6 +167,9 @@ SCimplify_by_graph_group_from_embedding <- function(
     stop("`n.pc` must contain unique valid component indices of `X`.", call. = FALSE)
   }
   if (!is.finite(seed)) stop("`seed` must be a finite integer.", call. = FALSE)
+  selected_components <- n.pc
+  X <- X[, selected_components, drop = FALSE]
+  internal_components <- seq_len(ncol(X))
 
   cell_ids <- rownames(X)
   graph_group <- .SCAlignGraphGrouping(
@@ -204,7 +207,7 @@ SCimplify_by_graph_group_from_embedding <- function(
       cell.split.condition = condition_i,
       gamma = gamma_i,
       k.knn = k_i,
-      n.pc = n.pc,
+      n.pc = internal_components,
       do.approx = do.approx,
       approx.N = min(approx.N, length(cells_i)),
       block.size = block.size,
@@ -284,7 +287,7 @@ SCimplify_by_graph_group_from_embedding <- function(
     genes.use = NA,
     simplification.algo = igraph.clustering[[1L]],
     do.approx = do.approx,
-    n.pc = n.pc,
+    n.pc = selected_components,
     k.knn = k.knn,
     sc.cell.graph.group. = graph_group,
     sc.cell.split.condition. = split_condition,
