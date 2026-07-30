@@ -54,7 +54,7 @@ SCimplify_by_graph_group_from_embedding(
 \item{...}{Additional arguments passed to \code{SCimplify_from_embedding()}.}
 }
 \value{
-A SuperCell-style list with globally unique membership IDs, combined graph objects, graph-group provenance, and optional group-specific results.
+A SuperCell-style list with globally unique membership IDs, graph-group provenance, and combined graph objects when their vertices can be aligned exactly to final membership IDs. Approximate construction may return \code{graph.supercells = NULL} when post-hoc condition splitting creates final memberships that are absent from the contracted presample graph. In that case \code{graph_supercells_available} is \code{FALSE} and \code{graph_supercells_unavailable_groups} identifies affected graph groups.
 }
 \description{
 Builds one k-nearest-neighbour graph for each value of \code{cell.graph.group}. All conditions within a graph group are included in the same graph. The \code{cell.split.condition} vector is applied only after graph construction and graph clustering, so returned metacells remain condition-pure without fitting separate condition-specific graphs.
