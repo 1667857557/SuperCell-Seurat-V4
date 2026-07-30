@@ -49,6 +49,14 @@ test_that("graph groups are independent while conditions share each graph", {
   expect_true(all(vapply(membership_groups, function(ids) {
     length(unique(condition[ids])) == 1L
   }, logical(1))))
+
+  expect_true(inherits(result$graph.supercells, "igraph"))
+  supercell_vertices <- as.character(igraph::V(result$graph.supercells)$name)
+  expect_false(anyDuplicated(supercell_vertices))
+  expect_setequal(supercell_vertices, names(membership_groups))
+  expect_setequal(names(result$supercell_size), names(membership_groups))
+  expect_equal(unname(result$supercell_size),
+               unname(vapply(membership_groups, length, integer(1))))
 })
 
 test_that("graph grouping vectors are aligned by cell ID", {
@@ -71,5 +79,25 @@ test_that("graph grouping vectors are aligned by cell ID", {
       return.singlecell.NW = FALSE,
       return.hierarchical.structure = FALSE
     )
+  )
+})
+
+test_that("graph-grouped construction rejects invalid embedding controls", {
+  X <- matrix(seq_len(16), nrow = 8L)
+  rownames(X) <- paste0("cell", seq_len(nrow(X)))
+  group <- rep(c("A", "B"), each = 4L)
+  X[1, 1] <- NA_real_
+  expect_error(
+    SCimplify_by_graph_group_from_embedding(
+      X, cell.graph.group = group, n.pc = 1:2
+    ),
+    "non-finite"
+  )
+  X[1, 1] <- 1
+  expect_error(
+    SCimplify_by_graph_group_from_embedding(
+      X, cell.graph.group = group, n.pc = 3
+    ),
+    "valid component indices"
   )
 })
