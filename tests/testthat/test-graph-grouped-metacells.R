@@ -31,6 +31,8 @@ test_that("graph groups are independent while conditions share each graph", {
     result$condition_scope,
     "joint_within_graph_group_then_membership_split"
   )
+  expect_true(result$graph_supercells_available)
+  expect_length(result$graph_supercells_unavailable_groups, 0L)
   expect_setequal(names(result$group.results), c("A", "B"))
 
   combined_edges <- igraph::as_edgelist(result$graph.singlecell, names = TRUE)
@@ -79,6 +81,22 @@ test_that("graph grouping vectors are aligned by cell ID", {
       return.singlecell.NW = FALSE,
       return.hierarchical.structure = FALSE
     )
+  )
+})
+
+test_that("unrepresentable contracted graphs are marked unavailable", {
+  graph <- igraph::make_ring(2)
+  local_map <- stats::setNames(1:3, c("1", "2", "3"))
+  aligned <- .SCRemapSupercellGraph(graph, local_map, "A")
+  expect_false(aligned$aligned)
+  expect_null(aligned$graph)
+  expect_match(aligned$reason, "graph_vertex_count_2")
+})
+
+test_that("numeric local memberships use graph vertex order", {
+  expect_identical(
+    .SCOrderedMembershipLevels(c("2", "1", "3", "2")),
+    c("1", "2", "3")
   )
 })
 
