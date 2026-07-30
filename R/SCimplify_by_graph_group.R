@@ -30,21 +30,43 @@
   do.call(igraph::disjoint_union, graphs)
 }
 
+.SCOrderedMembershipLevels <- function(membership) {
+  membership <- as.character(membership)
+  numeric_membership <- suppressWarnings(as.integer(membership))
+  if (!anyNA(numeric_membership) &&
+      identical(as.character(numeric_membership), membership)) {
+    return(as.character(sort(unique(numeric_membership))))
+  }
+  unique(membership)
+}
+
 .SCRemapSupercellGraph <- function(graph, local_map, graph_level) {
-  if (!inherits(graph, "igraph")) return(graph)
+  if (!inherits(graph, "igraph")) {
+    return(list(
+      graph = NULL,
+      aligned = FALSE,
+      reason = "missing_supercell_graph"
+    ))
+  }
   n_vertices <- igraph::vcount(graph)
-  if (!n_vertices) return(graph)
-  vertex_names <- igraph::V(graph)$name
-  if (is.null(vertex_names)) vertex_names <- as.character(seq_len(n_vertices))
-  vertex_names <- as.character(vertex_names)
-  if (!all(vertex_names %in% names(local_map))) {
-    if (n_vertices != length(local_map)) {
-      stop(
-        "Supercell graph cannot be aligned to membership in graph group `",
-        graph_level, "`.", call. = FALSE
+  if (n_vertices != length(local_map)) {
+    return(list(
+      graph = NULL,
+      aligned = FALSE,
+      reason = paste0(
+        "graph_vertex_count_", n_vertices,
+        "_differs_from_final_membership_count_", length(local_map)
       )
-    }
+    ))
+  }
+  vertex_names <- igraph::V(graph)$name
+  if (is.null(vertex_names)) {
     vertex_names <- names(local_map)
+  } else {
+    vertex_names <- as.character(vertex_names)
+    if (!all(vertex_names %in% names(local_map))) {
+      vertex_names <- names(local_map)
+    }
   }
   mapped <- unname(local_map[vertex_names])
   if (anyNA(mapped) || anyDuplicated(mapped)) {
@@ -54,7 +76,7 @@
     )
   }
   igraph::V(graph)$name <- as.character(mapped)
-  graph
+  list(graph = graph, aligned = TRUE, reason = NA_character_)
 }
 
 #' Build independent cell graphs by annotation while pooling conditions
@@ -90,8 +112,11 @@
 #' @param return.group.results Retain complete group-specific SuperCell results.
 #' @param ... Additional arguments passed to [SCimplify_from_embedding()].
 #'
-#' @return A SuperCell-style list with globally unique membership IDs, combined
-#'   graph objects, graph-group provenance, and optional group-specific results.
+#' @return A SuperCell-style list with globally unique membership IDs,
+#'   graph-group provenance, and combined graph objects when their vertices can
+#'   be aligned exactly to final membership IDs. Approximate construction may
+#'   return `graph.supercells = NULL` when post-hoc condition splitting creates
+#'   final memberships that are absent from the contracted presample graph.
 #' @export
 SCimplify_by_graph_group_from_embedding <- function(
     X,
@@ -198,7 +223,7 @@ SCimplify_by_graph_group_from_embedding <- function(
       }
       local_membership <- local_membership[index]
     }
-    local_levels <- unique(local_membership)
+    local_levels <- .SCOrderedMembershipLevels(local_membership)
     local_map <- stats::setNames(
       seq.int(membership_offset + 1L,
               membership_offset + length(local_levels)),
@@ -206,9 +231,15 @@ SCimplify_by_graph_group_from_embedding <- function(
     )
     membership[cells_i] <- unname(local_map[local_membership])
     membership_offset <- membership_offset + length(local_levels)
-    result_i$graph.supercells <- .SCRemapSupercellGraph(
+    graph_alignment <- .SCRemapSupercellGraph(
       result_i$graph.supercells, local_map, graph_level
     )
+    if (!isTRUE(graph_alignment$aligned)) {
+      result_i$graph.supercells.unaligned <- result_i$graph.supercells
+    }
+    result_i$graph.supercells <- graph_alignment$graph
+    result_i$graph.supercells.aligned <- graph_alignment$aligned
+    result_i$graph.supercells.unavailable.reason <- graph_alignment$reason
     result_i$graph.group <- graph_level
     result_i$input.cells <- cells_i
     result_i$global.membership.map <- local_map
@@ -235,11 +266,17 @@ SCimplify_by_graph_group_from_embedding <- function(
     }, character(1))
   }
   supercell_size <- vapply(metacell_rows, length, integer(1))
+  graph_alignment <- vapply(
+    group_results, `[[`, logical(1), "graph.supercells.aligned"
+  )
+  graph_supercells_available <- all(graph_alignment)
 
   result <- list(
-    graph.supercells = .SCDisjointGraphUnion(
-      lapply(group_results, `[[`, "graph.supercells")
-    ),
+    graph.supercells = if (graph_supercells_available) {
+      .SCDisjointGraphUnion(lapply(group_results, `[[`, "graph.supercells"))
+    } else {
+      NULL
+    },
     gamma = gamma,
     N.SC = length(metacell_rows),
     membership = membership,
@@ -255,9 +292,11 @@ SCimplify_by_graph_group_from_embedding <- function(
     SC.cell.split.condition. = mc_condition,
     graph_group_levels = group_levels,
     graph_scope = "independent_by_cell.graph.group",
-    condition_scope = "joint_within_graph_group_then_membership_split"
+    condition_scope = "joint_within_graph_group_then_membership_split",
+    graph_supercells_available = graph_supercells_available,
+    graph_supercells_unavailable_groups = names(graph_alignment)[!graph_alignment]
   )
-  if (inherits(result$graph.supercells, "igraph")) {
+  if (graph_supercells_available) {
     graph_ids <- as.character(igraph::V(result$graph.supercells)$name)
     if (!setequal(graph_ids, names(metacell_rows)) || anyDuplicated(graph_ids)) {
       stop("Combined supercell graph is not aligned to global membership IDs.",
