@@ -61,7 +61,7 @@ test_that("graph groups are independent while conditions share each graph", {
                unname(vapply(membership_groups, length, integer(1))))
 })
 
-test_that("graph grouping vectors are aligned by cell ID", {
+test_that("graph grouping vectors and selected components are aligned", {
   X <- matrix(seq_len(16), nrow = 8L)
   rownames(X) <- paste0("cell", seq_len(nrow(X)))
   graph_group <- stats::setNames(
@@ -70,18 +70,17 @@ test_that("graph grouping vectors are aligned by cell ID", {
   condition <- stats::setNames(
     rep(c("control", "treated"), 4L), rev(rownames(X))
   )
-  expect_silent(
-    SCimplify_by_graph_group_from_embedding(
-      X,
-      cell.graph.group = graph_group,
-      cell.split.condition = condition,
-      gamma = 2,
-      k.knn = 1,
-      n.pc = 1:2,
-      return.singlecell.NW = FALSE,
-      return.hierarchical.structure = FALSE
-    )
+  result <- SCimplify_by_graph_group_from_embedding(
+    X,
+    cell.graph.group = graph_group,
+    cell.split.condition = condition,
+    gamma = 2,
+    k.knn = 1,
+    n.pc = c(2, 1),
+    return.singlecell.NW = FALSE,
+    return.hierarchical.structure = FALSE
   )
+  expect_identical(result$n.pc, c(2L, 1L))
 })
 
 test_that("unrepresentable contracted graphs are marked unavailable", {
