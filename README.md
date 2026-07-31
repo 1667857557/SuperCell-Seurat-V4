@@ -6,7 +6,7 @@ SuperCell builds metacells from single-cell RNA, CITE-seq, and multiome Seurat o
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
-remotes::install_github("GfellerLab/SuperCell")
+remotes::install_github("1667857557/SuperCell_Seurat_V4")
 library(SuperCell)
 ```
 
@@ -16,7 +16,7 @@ Key runtime dependencies include Seurat, SeuratObject, Signac, data.table, fs, f
 
 ### 1. Preprocess the single-cell object
 
-Run the usual Seurat preprocessing first. `SCimplify_for_Seurat()` expects reductions such as `pca`, `apca`, or other user-provided embeddings to already exist.
+Run the usual Seurat preprocessing first. `SCimplify_for_Seurat()` expects reductions such as `pca`, `lsi`, `apca`, or other user-provided embeddings to already exist.
 
 ```r
 DefaultAssay(obj) <- "RNA"
@@ -54,9 +54,7 @@ mc <- SCimplify_for_Seurat(
 validate_metacell_output(mc)
 ```
 
-Optional label-aware construction uses any categorical metadata column. For
-example, a cell-type label prevents metacells from mixing known cell types;
-`NA` labels are allowed for partial annotation:
+Optional label-aware construction uses any categorical metadata column. For example, a cell-type label prevents metacells from mixing known cell types; `NA` labels are allowed for partial annotation:
 
 ```r
 mc <- SCimplify_for_Seurat(
@@ -69,62 +67,40 @@ mc <- SCimplify_for_Seurat(
 )
 ```
 
-### Independent cell-type graphs with conditions pooled within cell type
+### Independent cell-type WNN graphs with conditions pooled within cell type
 
-`cell.annotation` in `SCimplify()` or `SCimplify_from_embedding()` is a
-post-clustering purity constraint: those functions first build one graph over
-all supplied cells and then split mixed memberships. It does **not** create an
-independent graph for each annotation.
-
-Use `SCimplify_by_graph_group_from_embedding()` when graph scope and membership
-purity must be controlled separately. A typical paired RNA+ATAC workflow uses:
+Use `SCimplify_by_graph_group()` for paired RNA+ATAC data when every broad cell type must have an independent multimodal graph while all conditions within that cell type share one graph geometry.
 
 ```r
-rna <- Embeddings(obj[["pca"]])[, 1:30, drop = FALSE]
-atac <- Embeddings(obj[["lsi"]])[, 2:30, drop = FALSE]
-embedding <- cbind(scale(rna) / sqrt(ncol(rna)),
-                   scale(atac) / sqrt(ncol(atac)))
-
-sc <- SCimplify_by_graph_group_from_embedding(
-  X = embedding,
+sc <- SCimplify_by_graph_group(
+  seurat = obj,
   cell.graph.group = obj$cell_type,
   cell.split.condition = obj$condition,
-  gamma = 30,
-  k.knn = 30,
-  n.pc = seq_len(ncol(embedding))
+  assay = c("RNA", "ATAC"),
+  reduction = list("pca", "lsi"),
+  dims = list(1:30, 2:30),
+  gamma = 20,
+  k.knn = 30
 )
 ```
 
 The contract is:
 
-- one independent kNN graph is built for each `cell.graph.group` value;
-- all conditions within that graph group are jointly present during neighbour
-  search and graph clustering;
-- `cell.split.condition` is applied only after clustering, so metacells are
-  condition-pure while their local geometry is estimated on a shared
-  cross-condition graph;
-- graph-group results receive globally unique membership IDs and are combined as
-  disjoint graph components.
+- one independent multimodal WNN graph is built for each `cell.graph.group` value;
+- RNA and ATAC modality weights are learned adaptively by the native SuperCell/Seurat WNN implementation within that graph group;
+- all conditions in a graph group jointly participate in neighbour search and Walktrap clustering;
+- `cell.split.condition` is applied only after clustering, so final metacells are condition-pure without constructing condition-specific graphs;
+- returned metacell IDs are globally unique and the cell-level table records both parent WNN membership and final condition-pure membership.
 
-For condition comparisons, standardize each modality within the graph group
-using all conditions together. Do not standardize separately by condition,
-because that would erase or rescale condition-associated displacement before
-neighbour construction.
+Do not split the input by condition before calling this function. RNA PCA and ATAC LSI reductions must be defined on a shared coordinate system, not recomputed independently for each condition.
 
-`sample_col` is not a SuperCell2 builder argument and should not be passed to
-`SCimplify_for_Seurat()`. The corresponding input depends on which SuperCell
-API is being called:
+`sample_col` is not a SuperCell builder argument. The relevant interfaces are:
 
-- `SCimplify()` and `SCimplify_from_embedding()` accept post-clustering purity
-  vectors through `cell.annotation` and `cell.split.condition` after building
-  one graph over all supplied cells.
-- `SCimplify_by_graph_group_from_embedding()` accepts the graph partition through
-  `cell.graph.group` and the post-clustering condition purity vector through
-  `cell.split.condition`.
-- `SCimplify_for_Seurat()` takes the **name** of one metadata column through
-  `label` and builds separate label-restricted graph components.
+- `SCimplify_for_Seurat()` builds one graph on the supplied Seurat object; `label` creates label-restricted graph components.
+- `SCimplify_by_graph_group()` builds one native multimodal WNN graph per graph group and applies condition only after clustering.
+- `SCimplify()` and `SCimplify_from_embedding()` remain matrix/embedding builders for workflows that do not require the grouped Seurat WNN contract.
 
-The returned Seurat object contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`. Run `validate_metacell_output(mc)` after construction to check assay colnames, metacell size metadata, optional membership tables, and optional fragment manifests.
+The returned Seurat object from `SCimplify_for_Seurat()` contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`. Run `validate_metacell_output(mc)` after construction to check assay colnames, metacell size metadata, optional membership tables, and optional fragment manifests.
 
 ## Metacell expression aggregation
 
