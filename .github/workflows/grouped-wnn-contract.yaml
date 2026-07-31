@@ -1,0 +1,76 @@
+name: grouped-WNN-contract
+
+on:
+  push:
+    branches: [Supercell2]
+  pull_request:
+    branches: [Supercell2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  grouped-wnn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install system libraries
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libglpk-dev \
+            libgsl-dev \
+            libbz2-dev \
+            liblzma-dev \
+            zlib1g-dev
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::testthat
+          dependencies: '"hard"'
+
+      - name: Parse package sources
+        shell: Rscript {0}
+        run: |
+          files <- list.files("R", pattern = "\\.R$", full.names = TRUE)
+          invisible(lapply(files, parse))
+          stopifnot(
+            !file.exists("man/SCimplify_by_graph_group_from_embedding.Rd"),
+            !("SCimplify_by_graph_group_from_embedding" %in%
+              grep("^export", readLines("NAMESPACE"), value = TRUE)),
+            "export(SCimplify_by_graph_group)" %in% readLines("NAMESPACE")
+          )
+
+      - name: Install SuperCell
+        run: R CMD INSTALL . --no-multiarch --with-keep.source --install-tests
+
+      - name: Run grouped WNN contract tests
+        shell: Rscript {0}
+        run: |
+          library(SuperCell)
+          stopifnot(
+            is.function(SuperCell::SCimplify_by_graph_group),
+            identical(eval(formals(SuperCell::SCimplify_for_Seurat)$gamma), 30),
+            identical(eval(formals(SuperCell::SCimplify_by_graph_group)$gamma), 30),
+            !("SCimplify_by_graph_group_from_embedding" %in%
+              getNamespaceExports("SuperCell"))
+          )
+          testthat::test_local(
+            Sys.getenv("GITHUB_WORKSPACE"),
+            filter = "graph-grouped-metacells",
+            load_package = "installed",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )
