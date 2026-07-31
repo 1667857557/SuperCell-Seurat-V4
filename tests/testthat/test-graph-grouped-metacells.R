@@ -1,3 +1,7 @@
+test_that("grouped WNN default gamma is 30", {
+  expect_identical(eval(formals(SCimplify_by_graph_group)$gamma), 30)
+})
+
 test_that("graph groups use one joint-condition multimodal call each", {
   counts <- matrix(
     seq_len(32), nrow = 4,
@@ -22,10 +26,11 @@ test_that("graph groups use one joint-condition multimodal call each", {
   calls <- list()
 
   testthat::local_mocked_bindings(
-    SCimplify_for_Seurat = function(seurat, assay, reduction, dims, ...) {
+    SCimplify_for_Seurat = function(
+        seurat, assay, reduction, dims, gamma, ...) {
       calls[[length(calls) + 1L]] <<- list(
         cells = colnames(seurat), assay = assay,
-        reduction = reduction, dims = dims
+        reduction = reduction, dims = dims, gamma = gamma
       )
       local <- rep(c("1", "2"), each = 2, length.out = ncol(seurat))
       list(
@@ -55,6 +60,7 @@ test_that("graph groups use one joint-condition multimodal call each", {
   expect_true(all(vapply(calls, function(x) {
     identical(x$assay, c("RNA", "ATAC")) && length(x$reduction) == 2L
   }, logical(1))))
+  expect_true(all(vapply(calls, function(x) identical(x$gamma, 2), logical(1))))
   expect_identical(result$graph_scope,
                    "independent_WNN_by_cell.graph.group")
   expect_identical(result$condition_scope,
@@ -111,6 +117,7 @@ test_that("graph grouping vectors align by cell name", {
     dims = list(1:2, 1:2)
   )
   expect_identical(names(result$membership), colnames(object))
+  expect_identical(result$gamma, 30)
 })
 
 test_that("obsolete graph-group embedding API is removed", {
