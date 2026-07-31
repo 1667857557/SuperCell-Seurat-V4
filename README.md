@@ -28,6 +28,8 @@ obj <- RunPCA(obj)
 
 ### 2. Build metacells
 
+The canonical default is `gamma = 30`, corresponding to an approximate target of 30 cells per metacell.
+
 Unimodal RNA metacells:
 
 ```r
@@ -36,7 +38,7 @@ mc <- SCimplify_for_Seurat(
   assay = "RNA",
   reduction = list("pca"),
   dims = list(1:30),
-  gamma = 20
+  gamma = 30
 )
 validate_metacell_output(mc)
 ```
@@ -49,7 +51,7 @@ mc <- SCimplify_for_Seurat(
   assay = c("RNA", "ADT"),
   reduction = list("pca", "apca"),
   dims = list(1:30, 1:18),
-  gamma = 20
+  gamma = 30
 )
 validate_metacell_output(mc)
 ```
@@ -63,7 +65,7 @@ mc <- SCimplify_for_Seurat(
   reduction = list("pca", "apca"),
   dims = list(1:30, 1:18),
   label = "celltype",
-  gamma = 20
+  gamma = 30
 )
 ```
 
@@ -79,7 +81,7 @@ sc <- SCimplify_by_graph_group(
   assay = c("RNA", "ATAC"),
   reduction = list("pca", "lsi"),
   dims = list(1:30, 2:30),
-  gamma = 20,
+  gamma = 30,
   k.knn = 30
 )
 ```
@@ -146,7 +148,7 @@ mc <- SCimplify_for_Seurat(
   reduction = list("pca", "lsi"),
   dims = list(1:30, 2:30),
   fragmentFiles = list(ATAC = c("sample1/fragments.tsv.gz", "sample2/fragments.tsv.gz")),
-  gamma = 20
+  gamma = 30
 )
 ```
 
