@@ -19,33 +19,54 @@
   n_target
 }
 
-#' SCimplify_for_Seurat
+#' Build metacells from a Seurat object
 #'
-#' \code{SCimplify_for_Seurat}
-#' Build metacells from a Seurat single-cell object.
-#' @param seurat A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
-#' @param sobj.mc A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.
-#' @param gamma Graining level. The default is 30 cells per metacell.
-#' @param assay a list of one or two assays to use to build the knn graph on which metacell are identified.
-#' @param reduction a list of corresponding reduction name in the seurat single cell object.
-#' @param dims a list of corresponding dimensions to use.
-#' @param membership a vector of metacell membership as in SuperCell v1 to use to directly aggregate the data (optionnal).
-#' @param label optional metadata column used to keep labeled groups separate
-#' during metacell construction. This may contain condition, sample, cell-type,
-#' or another categorical annotation; `NA` values enable partial annotation.
+#' @param seurat A preprocessed Seurat single-cell object containing the assays
+#'   and reductions used to identify metacells.
+#' @param seurat.mc Optional metacell Seurat object to rescale. It must contain
+#'   a metacell hierarchy in `misc`.
+#' @param k.knn Number of nearest neighbours used to build the graph.
+#' @param kith Optional neighbourhood rank used by the graph builder.
+#' @param kernel Whether to use kernel-weighted graph edges.
+#' @param gamma Graining level. The canonical default is 30 cells per
+#'   metacell.
+#' @param graph.name Optional graph name.
+#' @param assay One or two assays used to build the metacell graph.
+#' @param reduction Corresponding reduction names in `seurat`.
+#' @param dims Corresponding dimensions used from each reduction.
+#' @param membership Optional existing metacell membership vector used to
+#'   aggregate data directly.
+#' @param metacellNormalization Whether to normalize the returned metacell
+#'   object using normalization commands recorded on the input object.
+#' @param avg.in.data Whether to aggregate normalized data by averaging.
+#' @param fragmentFiles Optional fragment files grouped by chromatin assay.
+#' @param tmpPath Temporary directory used during fragment aggregation.
+#' @param outputDirMcFragment Output directory for metacell fragment files.
+#' @param bgzip_path Optional path to `bgzip`.
+#' @param tabix_path Optional path to `tabix`.
+#' @param prefixMC Prefix used for metacell IDs.
+#' @param seed Integer seed used for reproducible metacell construction.
+#' @param return_membership_table Whether to store the membership table in
+#'   `misc`.
+#' @param return_fragment_manifest Whether to store fragment-manifest and
+#'   fragment-cell-map tables in `misc`.
+#' @param peakSep Separators used to parse peak names.
+#' @param label Optional metadata column used to keep labeled groups separate
+#'   during metacell construction. `NA` values enable partial annotation.
+#' @param return.seurat Whether to return a Seurat metacell object.
+#' @param nb_cl Optional worker count for fragment aggregation.
+#' @param verbose Display graph-construction progress.
 #' @details `sample_col` and `condition_col` are not formal arguments of this
-#' Seurat builder. Pass a Seurat metadata column name through `label` when
-#' metacells must not mix known conditions, samples, cell types, or other
-#' labeled groups. The matrix builders [SCimplify()] and
-#' [SCimplify_from_embedding()] instead accept condition and cell-type vectors
-#' through `cell.split.condition` and `cell.annotation`, respectively.
-#' @return  A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
+#'   Seurat builder. Pass a Seurat metadata column name through `label` when
+#'   metacells must not mix known groups. Use [SCimplify_by_graph_group()] when
+#'   graph grouping and post-clustering condition purity must be controlled
+#'   separately.
+#' @return A Seurat metacell object with hierarchy and memberships in `misc`, or
+#'   a SuperCell-style list when `return.seurat = FALSE`.
 #' @examples
-#' sobj.mc <- SCimplify_for_Seurat(seurat = pbmc,
-#'                          gamma = 30)
+#' sobj.mc <- SCimplify_for_Seurat(seurat = pbmc, gamma = 30)
 #' @import Seurat
 #' @export
-
 SCimplify_for_Seurat <- function(seurat,
                                  seurat.mc = NULL,
                                  k.knn = 30,
@@ -457,7 +478,6 @@ SCimplify_for_Seurat <- function(seurat,
     seurat.mc[[paste0(f, "_purity")]] <- purity_res[colnames(seurat.mc)]
   }
   if (!is.null(label)) {
-    # annotate metacell containing only unknown cell as unknown
     seurat.mc[[label]][seurat.mc[[paste0(label,"_purity")]]==0] <- "unknown"
   }
   if (return.seurat) {
