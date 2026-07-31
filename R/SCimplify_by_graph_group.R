@@ -53,7 +53,8 @@
 #' @param kith Optional neighbourhood rank passed to
 #'   [SCimplify_for_Seurat()].
 #' @param kernel Whether to use the SuperCell kernel-weighted graph.
-#' @param gamma Target average number of cells per metacell.
+#' @param gamma Target average number of cells per metacell. The canonical
+#'   default is 30.
 #' @param graph.name Optional graph name passed to
 #'   [SCimplify_for_Seurat()].
 #' @param assay Two assays used for multimodal WNN construction, typically RNA
@@ -76,7 +77,7 @@ SCimplify_by_graph_group <- function(
     k.knn = 30,
     kith = NULL,
     kernel = TRUE,
-    gamma = 20,
+    gamma = 30,
     graph.name = NULL,
     assay = c("RNA", "ATAC"),
     reduction = list("pca", "lsi"),
