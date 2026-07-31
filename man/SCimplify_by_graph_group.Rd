@@ -11,7 +11,7 @@ SCimplify_by_graph_group(
   k.knn = 30,
   kith = NULL,
   kernel = TRUE,
-  gamma = 20,
+  gamma = 30,
   graph.name = NULL,
   assay = c("RNA", "ATAC"),
   reduction = list("pca", "lsi"),
@@ -34,7 +34,7 @@ SCimplify_by_graph_group(
 
 \item{kernel}{Whether to use the SuperCell kernel-weighted graph.}
 
-\item{gamma}{Target average number of cells per metacell.}
+\item{gamma}{Target average number of cells per metacell. The canonical default is 30.}
 
 \item{graph.name}{Optional graph name passed to \code{SCimplify_for_Seurat()}.}
 
