@@ -35,46 +35,37 @@ SCimplify_for_Seurat(
 )
 }
 \arguments{
-\item{seurat}{A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells}
+\item{seurat}{A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells.}
+
+\item{seurat.mc}{An optional metacell Seurat object to rescale. It must contain a metacell hierarchy in \code{misc}.}
 
 \item{gamma}{Graining level. The default is 30 cells per metacell.}
 
-\item{assay}{a list of one or two assays to use to build the knn graph on which metacell are identified.}
+\item{assay}{A list of one or two assays used to build the graph on which metacells are identified.}
 
-\item{reduction}{a list of corresponding reduction name in the seurat single cell object.}
+\item{reduction}{A list of corresponding reduction names in the single-cell Seurat object.}
 
-\item{dims}{a list of corresponding dimensions to use.}
+\item{dims}{A list of corresponding dimensions to use.}
 
-\item{membership}{a vector of metacell membership as in SuperCell v1 to use to directly aggregate the data (optionnal).}
+\item{membership}{An optional vector of existing metacell memberships used to aggregate the data directly.}
 
-\item{label}{optional metadata column used to keep labeled groups separate
-during metacell construction. This may contain condition, sample, cell-type,
-or another categorical annotation; \code{NA} values enable partial annotation.}
+\item{label}{Optional metadata column used to keep labeled groups separate during metacell construction. This may contain condition, sample, cell type, or another categorical annotation; \code{NA} values enable partial annotation.}
 
-\item{sobj.mc}{A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.}
+\item{return_fragment_manifest}{Whether to store fragment-manifest and fragment-cell-map tables in \code{misc}.}
 
-\item{return_fragment_manifest}{whether to store fragment_manifest and fragment_cell_map tables in misc.}
+\item{seed}{Integer seed used for reproducible metacell construction.}
 
-\item{seed}{integer seed used for reproducible metacell construction.}
-
-\item{return_membership_table}{whether to store the membership table in misc.}
+\item{return_membership_table}{Whether to store the membership table in \code{misc}.}
 }
 \value{
-A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
+A Seurat metacell object with the metacell hierarchy and memberships in \code{misc}.
 }
 \details{
-\code{sample_col} and \code{condition_col} are not formal arguments of this
-Seurat builder. Pass a Seurat metadata column name through \code{label} when
-metacells must not mix known conditions, samples, cell types, or other
-labeled groups. The matrix builders \code{SCimplify()} and
-\code{SCimplify_from_embedding()} instead accept condition and cell-type vectors
-through \code{cell.split.condition} and \code{cell.annotation}, respectively.
+\code{sample_col} and \code{condition_col} are not formal arguments of this Seurat builder. Pass a Seurat metadata column name through \code{label} when metacells must not mix known conditions, samples, cell types, or other labeled groups. The matrix builders \code{SCimplify()} and \code{SCimplify_from_embedding()} instead accept condition and cell-type vectors through \code{cell.split.condition} and \code{cell.annotation}, respectively.
 }
 \description{
-\code{SCimplify_for_Seurat}
-Build metacells from a Seurat single-cell object.
+Build metacells from a preprocessed Seurat single-cell object.
 }
 \examples{
-sobj.mc <- SCimplify_for_Seurat(seurat = pbmc,
-                         gamma = 30)
+sobj.mc <- SCimplify_for_Seurat(seurat = pbmc, gamma = 30)
 }
