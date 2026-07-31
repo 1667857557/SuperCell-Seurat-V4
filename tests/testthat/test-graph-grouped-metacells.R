@@ -1,4 +1,5 @@
-test_that("grouped WNN default gamma is 30", {
+test_that("canonical Seurat metacell defaults use gamma 30", {
+  expect_identical(eval(formals(SCimplify_for_Seurat)$gamma), 30)
   expect_identical(eval(formals(SCimplify_by_graph_group)$gamma), 30)
 })
 
