@@ -10,7 +10,7 @@ SCimplify_for_Seurat(
   k.knn = 30,
   kith = NULL,
   kernel = T,
-  gamma = 20,
+  gamma = 30,
   graph.name = NULL,
   assay = c("RNA"),
   reduction = list("pca"),
@@ -37,7 +37,7 @@ SCimplify_for_Seurat(
 \arguments{
 \item{seurat}{A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells}
 
-\item{gamma}{graining level.}
+\item{gamma}{Graining level. The default is 30 cells per metacell.}
 
 \item{assay}{a list of one or two assays to use to build the knn graph on which metacell are identified.}
 
@@ -71,7 +71,7 @@ labeled groups. The matrix builders \code{SCimplify()} and
 through \code{cell.split.condition} and \code{cell.annotation}, respectively.
 }
 \description{
-\code{SCimplify_for_Seurat} 
+\code{SCimplify_for_Seurat}
 Build metacells from a Seurat single-cell object.
 }
 \examples{

@@ -25,7 +25,7 @@
 #' Build metacells from a Seurat single-cell object.
 #' @param seurat A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
 #' @param sobj.mc A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.
-#' @param gamma graining level.
+#' @param gamma Graining level. The default is 30 cells per metacell.
 #' @param assay a list of one or two assays to use to build the knn graph on which metacell are identified.
 #' @param reduction a list of corresponding reduction name in the seurat single cell object.
 #' @param dims a list of corresponding dimensions to use.
@@ -51,7 +51,7 @@ SCimplify_for_Seurat <- function(seurat,
                                  k.knn = 30,
                                  kith = NULL,
                                  kernel = T,
-                                 gamma = 20,
+                                 gamma = 30,
                                  graph.name = NULL,
                                  assay = c("RNA"),
                                  reduction = list("pca"),
