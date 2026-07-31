@@ -1,49 +1,66 @@
-test_that("graph groups are independent while conditions share each graph", {
-  cell_id <- c(
-    "A_C_1", "A_D_1", "A_C_2", "A_D_2", "A_C_3", "A_D_3",
-    "B_C_1", "B_D_1", "B_C_2", "B_D_2", "B_C_3", "B_D_3"
+test_that("graph groups use one joint-condition multimodal call each", {
+  counts <- matrix(
+    seq_len(32), nrow = 4,
+    dimnames = list(paste0("gene", 1:4), paste0("cell", 1:8))
   )
-  graph_group <- stats::setNames(rep(c("A", "B"), each = 6L), cell_id)
-  condition <- stats::setNames(rep(c("C", "D"), 6L), cell_id)
-  X <- rbind(
-    c(0, 0), c(0.01, 0), c(1, 0), c(1.01, 0), c(2, 0), c(2.01, 0),
-    c(0, 0.001), c(0.01, 0.001), c(1, 0.001), c(1.01, 0.001),
-    c(2, 0.001), c(2.01, 0.001)
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
+  object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = counts)
+  object[["pca"]] <- SeuratObject::CreateDimReducObject(
+    embeddings = matrix(
+      seq_len(24), nrow = 8,
+      dimnames = list(colnames(object), paste0("PC_", 1:3))
+    ), key = "PC_", assay = "RNA"
   )
-  rownames(X) <- cell_id
-  colnames(X) <- c("dim1", "dim2")
+  object[["lsi"]] <- SeuratObject::CreateDimReducObject(
+    embeddings = matrix(
+      rev(seq_len(24)), nrow = 8,
+      dimnames = list(colnames(object), paste0("LSI_", 1:3))
+    ), key = "LSI_", assay = "ATAC"
+  )
+  graph_group <- stats::setNames(rep(c("T", "B"), each = 4), colnames(object))
+  condition <- stats::setNames(rep(c("control", "treated"), 4), colnames(object))
+  calls <- list()
 
-  result <- SCimplify_by_graph_group_from_embedding(
-    X = X,
+  testthat::local_mocked_bindings(
+    SCimplify_for_Seurat = function(seurat, assay, reduction, dims, ...) {
+      calls[[length(calls) + 1L]] <<- list(
+        cells = colnames(seurat), assay = assay,
+        reduction = reduction, dims = dims
+      )
+      local <- rep(c("1", "2"), each = 2, length.out = ncol(seurat))
+      list(
+        membership = stats::setNames(local, colnames(seurat)),
+        h_membership = list(membership = local)
+      )
+    },
+    .package = "SuperCell"
+  )
+
+  result <- SCimplify_by_graph_group(
+    seurat = object,
     cell.graph.group = graph_group,
     cell.split.condition = condition,
+    assay = c("RNA", "ATAC"),
+    reduction = list("pca", "lsi"),
+    dims = list(1:3, 1:3),
     gamma = 2,
-    k.knn = 1,
-    n.pc = 1:2,
-    seed = 11,
-    return.singlecell.NW = TRUE,
-    return.hierarchical.structure = TRUE,
     return.group.results = TRUE
   )
 
-  expect_identical(result$graph_scope, "independent_by_cell.graph.group")
-  expect_identical(
-    result$condition_scope,
-    "joint_within_graph_group_then_membership_split"
-  )
-  expect_true(result$graph_supercells_available)
-  expect_length(result$graph_supercells_unavailable_groups, 0L)
-  expect_setequal(names(result$group.results), c("A", "B"))
-
-  combined_edges <- igraph::as_edgelist(result$graph.singlecell, names = TRUE)
-  expect_true(nrow(combined_edges) > 0L)
-  expect_true(all(
-    graph_group[combined_edges[, 1L]] == graph_group[combined_edges[, 2L]]
-  ))
-  expect_true(any(
-    condition[combined_edges[, 1L]] != condition[combined_edges[, 2L]]
-  ))
-
+  expect_length(calls, 2L)
+  expect_true(all(vapply(calls, function(x) {
+    length(unique(graph_group[x$cells])) == 1L &&
+      length(unique(condition[x$cells])) == 2L
+  }, logical(1))))
+  expect_true(all(vapply(calls, function(x) {
+    identical(x$assay, c("RNA", "ATAC")) && length(x$reduction) == 2L
+  }, logical(1))))
+  expect_identical(result$graph_scope,
+                   "independent_WNN_by_cell.graph.group")
+  expect_identical(result$condition_scope,
+                   "joint_within_graph_group_then_membership_split")
+  expect_identical(result$modality_weighting,
+                   "adaptive_WNN_within_graph_group")
   membership_groups <- split(names(result$membership), result$membership)
   expect_true(all(vapply(membership_groups, function(ids) {
     length(unique(graph_group[ids])) == 1L
@@ -51,70 +68,72 @@ test_that("graph groups are independent while conditions share each graph", {
   expect_true(all(vapply(membership_groups, function(ids) {
     length(unique(condition[ids])) == 1L
   }, logical(1))))
-
-  expect_true(inherits(result$graph.supercells, "igraph"))
-  supercell_vertices <- as.character(igraph::V(result$graph.supercells)$name)
-  expect_false(anyDuplicated(supercell_vertices))
-  expect_setequal(supercell_vertices, names(membership_groups))
-  expect_setequal(names(result$supercell_size), names(membership_groups))
-  expect_equal(unname(result$supercell_size),
-               unname(vapply(membership_groups, length, integer(1))))
+  expect_setequal(result$membership_table$cell_id, colnames(object))
+  expect_setequal(names(result$supercell_size), unique(result$membership))
 })
 
-test_that("graph grouping vectors and selected components are aligned", {
-  X <- matrix(seq_len(16), nrow = 8L)
-  rownames(X) <- paste0("cell", seq_len(nrow(X)))
-  graph_group <- stats::setNames(
-    rep(c("type1", "type2"), each = 4L), rev(rownames(X))
+test_that("graph grouping vectors align by cell name", {
+  counts <- matrix(
+    seq_len(16), nrow = 2,
+    dimnames = list(c("g1", "g2"), paste0("cell", 1:8))
   )
-  condition <- stats::setNames(
-    rep(c("control", "treated"), 4L), rev(rownames(X))
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
+  object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = counts)
+  object[["pca"]] <- SeuratObject::CreateDimReducObject(
+    embeddings = matrix(seq_len(16), nrow = 8,
+      dimnames = list(colnames(object), paste0("PC_", 1:2))),
+    key = "PC_", assay = "RNA"
   )
-  result <- SCimplify_by_graph_group_from_embedding(
-    X,
-    cell.graph.group = graph_group,
-    cell.split.condition = condition,
-    gamma = 2,
-    k.knn = 1,
-    n.pc = c(2, 1),
-    return.singlecell.NW = FALSE,
-    return.hierarchical.structure = FALSE
+  object[["lsi"]] <- SeuratObject::CreateDimReducObject(
+    embeddings = matrix(rev(seq_len(16)), nrow = 8,
+      dimnames = list(colnames(object), paste0("LSI_", 1:2))),
+    key = "LSI_", assay = "ATAC"
   )
-  expect_identical(result$n.pc, c(2L, 1L))
+  group <- stats::setNames(rep(c("A", "B"), each = 4), rev(colnames(object)))
+  condition <- stats::setNames(rep(c("C", "D"), 4), rev(colnames(object)))
+
+  testthat::local_mocked_bindings(
+    SCimplify_for_Seurat = function(seurat, ...) {
+      list(
+        membership = stats::setNames(
+          rep("1", ncol(seurat)), colnames(seurat)
+        ),
+        h_membership = list()
+      )
+    },
+    .package = "SuperCell"
+  )
+
+  result <- SCimplify_by_graph_group(
+    object, group, condition,
+    assay = c("RNA", "ATAC"),
+    reduction = list("pca", "lsi"),
+    dims = list(1:2, 1:2)
+  )
+  expect_identical(names(result$membership), colnames(object))
 })
 
-test_that("unrepresentable contracted graphs are marked unavailable", {
-  graph <- igraph::make_ring(2)
-  local_map <- stats::setNames(1:3, c("1", "2", "3"))
-  aligned <- .SCRemapSupercellGraph(graph, local_map, "A")
-  expect_false(aligned$aligned)
-  expect_null(aligned$graph)
-  expect_match(aligned$reason, "graph_vertex_count_2")
-})
-
-test_that("numeric local memberships use graph vertex order", {
-  expect_identical(
-    .SCOrderedMembershipLevels(c("2", "1", "3", "2")),
-    c("1", "2", "3")
+test_that("obsolete graph-group embedding API is removed", {
+  expect_false(
+    "SCimplify_by_graph_group_from_embedding" %in%
+      getNamespaceExports("SuperCell")
   )
+  expect_true("SCimplify_by_graph_group" %in% getNamespaceExports("SuperCell"))
 })
 
-test_that("graph-grouped construction rejects invalid embedding controls", {
-  X <- matrix(seq_len(16), nrow = 8L)
-  rownames(X) <- paste0("cell", seq_len(nrow(X)))
-  group <- rep(c("A", "B"), each = 4L)
-  X[1, 1] <- NA_real_
+test_that("invalid graph-group multimodal inputs fail early", {
+  counts <- matrix(1, nrow = 2, ncol = 4,
+                   dimnames = list(c("g1", "g2"), paste0("c", 1:4)))
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
   expect_error(
-    SCimplify_by_graph_group_from_embedding(
-      X, cell.graph.group = group, n.pc = 1:2
+    SCimplify_by_graph_group(
+      object,
+      cell.graph.group = c("A", "A", "B", "B")
     ),
-    "non-finite"
+    "Missing assay"
   )
-  X[1, 1] <- 1
   expect_error(
-    SCimplify_by_graph_group_from_embedding(
-      X, cell.graph.group = group, n.pc = 3
-    ),
-    "valid component indices"
+    .SCAlignGraphGrouping(c("A", "B"), colnames(object), "group"),
+    "one value per input cell"
   )
 })
