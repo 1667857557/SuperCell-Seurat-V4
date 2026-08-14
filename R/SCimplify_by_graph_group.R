@@ -36,25 +36,35 @@
 
 #' Build cell-type-scoped multimodal metacells
 #'
-#' Builds one independent multimodal WNN graph for each value of
-#' `cell.graph.group`. All conditions inside a graph group are included in the
-#' same WNN construction and Walktrap clustering. `cell.split.condition` is
-#' applied only after clustering, so final memberships are condition-pure while
-#' retaining a shared cross-condition graph within each broad cell type.
+#' Builds one independent multimodal WNN graph and one Walktrap hierarchy for
+#' each value of `cell.graph.group`. All conditions inside a graph group are
+#' included in the same graph and hierarchy. The legacy policy cuts the shared
+#' hierarchy at the global `gamma` target and then splits memberships by
+#' condition. The hierarchy-constrained policy instead selects, for each
+#' condition, the finest legal cut of that same hierarchy subject to the
+#' requested condition-specific resolution and hard minimum-size constraints.
+#' It never rebuilds a condition-specific graph or Walktrap hierarchy.
 #'
 #' @param seurat A preprocessed Seurat object containing the requested assays
 #'   and reductions.
 #' @param cell.graph.group Cell-level graph grouping vector, typically a broad
 #'   cell-type annotation. A separate WNN graph is built for each value.
 #' @param cell.split.condition Optional condition vector. Conditions are pooled
-#'   during WNN construction and used only to split memberships after graph
-#'   clustering.
+#'   during WNN and Walktrap construction.
 #' @param k.knn Number of neighbours passed to [SCimplify_for_Seurat()].
 #' @param kith Optional neighbourhood rank passed to
 #'   [SCimplify_for_Seurat()].
 #' @param kernel Whether to use the SuperCell kernel-weighted graph.
-#' @param gamma Target average number of cells per metacell. The canonical
-#'   default is 30.
+#' @param gamma Target average number of cells per final condition-specific
+#'   metacell. This is a soft resolution target in hierarchy-constrained mode.
+#' @param condition.partition Final condition partition policy. The default
+#'   `"legacy_post_split"` preserves historical behavior. Use
+#'   `"hierarchy_constrained"` to select condition-specific cuts from the one
+#'   shared Walktrap hierarchy.
+#' @param min.metacell.size Hard minimum cells per final metacell in
+#'   hierarchy-constrained mode.
+#' @param min.metacells.per.condition Hard minimum final metacells per condition
+#'   in hierarchy-constrained mode.
 #' @param graph.name Optional graph name passed to
 #'   [SCimplify_for_Seurat()].
 #' @param assay Two assays used for multimodal WNN construction, typically RNA
@@ -67,8 +77,9 @@
 #' @param verbose Forward progress messages to SuperCell graph construction.
 #'
 #' @return A list containing globally unique condition-pure membership IDs,
-#'   parent WNN-cluster memberships, a cell-level membership table, metacell
-#'   sizes, group-specific hierarchies, and graph-construction provenance.
+#'   shared-hierarchy provenance, a canonical cell-level membership table,
+#'   metacell sizes, partition diagnostics, group-specific hierarchies, and
+#'   graph-construction provenance.
 #' @export
 SCimplify_by_graph_group <- function(
     seurat,
@@ -78,6 +89,9 @@ SCimplify_by_graph_group <- function(
     kith = NULL,
     kernel = TRUE,
     gamma = 30,
+    condition.partition = c("legacy_post_split", "hierarchy_constrained"),
+    min.metacell.size = 1L,
+    min.metacells.per.condition = 1L,
     graph.name = NULL,
     assay = c("RNA", "ATAC"),
     reduction = list("pca", "lsi"),
@@ -88,6 +102,7 @@ SCimplify_by_graph_group <- function(
   if (!inherits(seurat, "Seurat")) {
     stop("`seurat` must inherit from Seurat.", call. = FALSE)
   }
+  condition.partition <- match.arg(condition.partition)
   cell_ids <- as.character(colnames(seurat))
   if (!length(cell_ids) || anyNA(cell_ids) || any(!nzchar(cell_ids)) ||
       anyDuplicated(cell_ids)) {
@@ -121,6 +136,8 @@ SCimplify_by_graph_group <- function(
   k.knn <- as.integer(k.knn)[1L]
   gamma <- suppressWarnings(as.numeric(gamma)[1L])
   seed <- as.integer(seed)[1L]
+  min.metacell.size <- as.integer(min.metacell.size)[1L]
+  min.metacells.per.condition <- as.integer(min.metacells.per.condition)[1L]
   if (is.na(k.knn) || k.knn < 1L) {
     stop("`k.knn` must be a positive integer.", call. = FALSE)
   }
@@ -129,6 +146,11 @@ SCimplify_by_graph_group <- function(
   }
   if (!is.finite(seed)) {
     stop("`seed` must be a finite integer.", call. = FALSE)
+  }
+  if (is.na(min.metacell.size) || min.metacell.size < 1L ||
+      is.na(min.metacells.per.condition) || min.metacells.per.condition < 1L) {
+    stop("Minimum metacell size/count controls must be positive integers.",
+         call. = FALSE)
   }
   if (!is.logical(kernel) || length(kernel) != 1L || is.na(kernel) ||
       !is.logical(return.group.results) || length(return.group.results) != 1L ||
@@ -155,10 +177,15 @@ SCimplify_by_graph_group <- function(
   }
 
   parent_membership <- stats::setNames(character(length(cell_ids)), cell_ids)
+  final_key <- stats::setNames(character(length(cell_ids)), cell_ids)
+  shared_community_id <- stats::setNames(character(length(cell_ids)), cell_ids)
+  shared_cut_k <- stats::setNames(rep(NA_integer_, length(cell_ids)), cell_ids)
+  partition_policy_cell <- stats::setNames(character(length(cell_ids)), cell_ids)
   group_results <- vector("list", length(group_levels))
   names(group_results) <- group_levels
   hierarchies <- vector("list", length(group_levels))
   names(hierarchies) <- group_levels
+  partition_diagnostics <- list()
 
   for (i in seq_along(group_levels)) {
     graph_level <- group_levels[[i]]
@@ -205,8 +232,52 @@ SCimplify_by_graph_group <- function(
       stop("SuperCell returned missing memberships in graph group `",
            graph_level, "`.", call. = FALSE)
     }
-    parent_membership[cells_i] <- paste0("G", i, "::", local)
+    names(local) <- cells_i
     hierarchies[[i]] <- result_i$h_membership
+
+    if (identical(condition.partition, "hierarchy_constrained") &&
+        !is.null(split_condition)) {
+      if (is.null(result_i$h_membership)) {
+        stop("Hierarchy-constrained partitioning requires the shared Walktrap hierarchy.",
+             call. = FALSE)
+      }
+      partition_i <- .SCPartitionSharedHierarchyByCondition(
+        hierarchy = result_i$h_membership,
+        cell_ids = cells_i,
+        condition = split_condition[cells_i],
+        gamma = gamma,
+        min.metacell.size = min.metacell.size,
+        min.metacells.per.condition = min.metacells.per.condition
+      )
+      parent_membership[cells_i] <- paste0(
+        "G", i, "::", unname(partition_i$parent_key[cells_i])
+      )
+      final_key[cells_i] <- paste0(
+        "G", i, "::", unname(partition_i$final_key[cells_i])
+      )
+      shared_community_id[cells_i] <-
+        unname(partition_i$shared_community_id[cells_i])
+      shared_cut_k[cells_i] <- unname(partition_i$shared_cut_k[cells_i])
+      partition_policy_cell[cells_i] <- "hierarchy_constrained"
+      diagnostic <- partition_i$diagnostics
+      diagnostic$graph_group <- graph_level
+      partition_diagnostics[[length(partition_diagnostics) + 1L]] <- diagnostic
+    } else {
+      parent_membership[cells_i] <- paste0("G", i, "::", local[cells_i])
+      final_key[cells_i] <- if (is.null(split_condition)) {
+        parent_membership[cells_i]
+      } else {
+        paste(parent_membership[cells_i], split_condition[cells_i], sep = "\001")
+      }
+      shared_community_id[cells_i] <- unname(local[cells_i])
+      if (is.null(split_condition)) {
+        shared_cut_k[cells_i] <- length(unique(local))
+        partition_policy_cell[cells_i] <- "global_hierarchy_cut_no_split"
+      } else {
+        partition_policy_cell[cells_i] <- "legacy_post_split"
+      }
+    }
+
     if (isTRUE(return.group.results)) {
       result_i$graph.group <- graph_level
       result_i$input.cells <- cells_i
@@ -214,15 +285,15 @@ SCimplify_by_graph_group <- function(
     }
   }
 
-  if (any(!nzchar(parent_membership))) {
+  if (any(!nzchar(parent_membership)) || any(!nzchar(final_key))) {
     stop("SuperCell did not assign every input cell.", call. = FALSE)
   }
-  final_key <- if (is.null(split_condition)) {
-    parent_membership[cell_ids]
+  id_map <- if (identical(condition.partition, "hierarchy_constrained") &&
+                !is.null(split_condition)) {
+    .SCStableMetacellIds(sort(unique(unname(final_key))))
   } else {
-    paste(parent_membership[cell_ids], split_condition[cell_ids], sep = "\001")
+    .SCStableMetacellIds(final_key)
   }
-  id_map <- .SCStableMetacellIds(final_key)
   membership <- stats::setNames(unname(id_map[final_key]), cell_ids)
   membership_groups <- split(cell_ids, membership)
 
@@ -249,12 +320,39 @@ SCimplify_by_graph_group <- function(
     metacell_id = unname(membership[cell_ids]),
     parent_metacell_id = unname(parent_membership[cell_ids]),
     graph_group = unname(graph_group[cell_ids]),
+    partition_policy = unname(partition_policy_cell[cell_ids]),
+    shared_cut_k = as.integer(shared_cut_k[cell_ids]),
+    shared_community_id = unname(shared_community_id[cell_ids]),
     stringsAsFactors = FALSE
   )
   if (!is.null(split_condition)) {
     membership_table$condition <- unname(split_condition[cell_ids])
   }
   supercell_size <- vapply(membership_groups, length, integer(1))
+  if (identical(condition.partition, "hierarchy_constrained") &&
+      !is.null(split_condition) && any(supercell_size < min.metacell.size)) {
+    stop("Hierarchy-constrained partition returned a metacell below the hard minimum size.",
+         call. = FALSE)
+  }
+
+  partition_policy <- if (is.null(split_condition)) {
+    "global_hierarchy_cut_no_split"
+  } else {
+    condition.partition
+  }
+  partition_schema_version <- switch(
+    partition_policy,
+    hierarchy_constrained = "shared_walktrap_condition_cut_v1",
+    legacy_post_split = "legacy_post_split_v1",
+    global_hierarchy_cut_no_split = "global_native_gamma_v1"
+  )
+  condition_scope <- switch(
+    partition_policy,
+    hierarchy_constrained =
+      "joint_within_graph_group_shared_hierarchy_condition_constrained_cut",
+    legacy_post_split = "joint_within_graph_group_then_membership_split",
+    global_hierarchy_cut_no_split = "not_applicable_no_condition_split"
+  )
 
   result <- list(
     membership = membership,
@@ -270,8 +368,17 @@ SCimplify_by_graph_group <- function(
     SC.cell.graph.group. = metacell_graph_group,
     SC.cell.split.condition. = metacell_condition,
     h_membership = hierarchies,
+    partition_policy = partition_policy,
+    partition_schema_version = partition_schema_version,
+    partition_diagnostics = if (length(partition_diagnostics)) {
+      do.call(rbind, partition_diagnostics)
+    } else {
+      data.frame()
+    },
+    min_metacell_size = min.metacell.size,
+    min_metacells_per_condition = min.metacells.per.condition,
     graph_scope = "independent_WNN_by_cell.graph.group",
-    condition_scope = "joint_within_graph_group_then_membership_split",
+    condition_scope = condition_scope,
     graph_method = "SCimplify_for_Seurat_multimodal_WNN_walktrap",
     modality_weighting = "adaptive_WNN_within_graph_group"
   )
