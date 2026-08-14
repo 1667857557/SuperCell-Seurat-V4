@@ -160,18 +160,18 @@ test_that("hierarchy mode canonical IDs are invariant to cell order", {
   )
   object <- SeuratObject::CreateSeuratObject(counts = counts)
   object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = counts)
-  embedding <- matrix(
+  pca_embedding <- matrix(
     seq_len(length(cells) * 3L), nrow = length(cells),
-    dimnames = list(cells, paste0("D", seq_len(3)))
+    dimnames = list(cells, paste0("PC_", seq_len(3)))
   )
+  lsi_embedding <- pca_embedding[, 3:1, drop = FALSE]
+  colnames(lsi_embedding) <- paste0("LSI_", seq_len(3))
   object[["pca"]] <- SeuratObject::CreateDimReducObject(
-    embeddings = embedding, key = "PC_", assay = "RNA"
+    embeddings = pca_embedding, key = "PC_", assay = "RNA"
   )
-  colnames(object[["pca"]]) <- paste0("PC_", seq_len(3))
   object[["lsi"]] <- SeuratObject::CreateDimReducObject(
-    embeddings = embedding[, 3:1, drop = FALSE], key = "LSI_", assay = "ATAC"
+    embeddings = lsi_embedding, key = "LSI_", assay = "ATAC"
   )
-  colnames(object[["lsi"]]) <- paste0("LSI_", seq_len(3))
   graph_group <- stats::setNames(sub("_.*$", "", cells), cells)
   condition <- stats::setNames(sub("^[^_]+_([^_]+)_.*$", "\\1", cells), cells)
 
