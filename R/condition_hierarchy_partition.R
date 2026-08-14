@@ -31,6 +31,20 @@
   stats::setNames(cut, cell_ids)
 }
 
+.SCConditionHierarchyRange <- function(hierarchy, n_vertices) {
+  if (!isTRUE(igraph::is_hierarchical(hierarchy))) {
+    stop("Condition-constrained partitioning requires a hierarchical community result.",
+         call. = FALSE)
+  }
+  merge_matrix <- igraph::merges(hierarchy)
+  n_merges <- if (is.null(merge_matrix)) 0L else nrow(merge_matrix)
+  min_k <- as.integer(n_vertices - n_merges)
+  if (is.na(min_k) || min_k < 1L || min_k > n_vertices) {
+    stop("Walktrap hierarchy exposes an invalid merge range.", call. = FALSE)
+  }
+  c(min = min_k, max = as.integer(n_vertices))
+}
+
 .SCConditionCutSummary <- function(
     hierarchy, cell_ids, condition, condition_value, k) {
   cut <- .SCConditionHierarchyCut(hierarchy, cell_ids, k)
@@ -91,14 +105,15 @@
       summary$min_size >= min.metacell.size
   }
 
-  low <- 1L
-  high <- length(cell_ids)
+  hierarchy_range <- .SCConditionHierarchyRange(hierarchy, length(cell_ids))
+  low <- unname(hierarchy_range[["min"]])
+  high <- unname(hierarchy_range[["max"]])
   base <- evaluate(low)
   if (!feasible(base)) {
     stop(
       "Shared Walktrap hierarchy cannot satisfy the minimum metacell size for ",
-      "condition `", condition_value, "` even at its coarsest cut.",
-      call. = FALSE
+      "condition `", condition_value, "` even at its coarsest valid cut (k=",
+      low, ").", call. = FALSE
     )
   }
   while (low < high) {
@@ -134,6 +149,8 @@
     nominal_target_metacells = nominal_target,
     size_limited_target_metacells = size_limited_target,
     target_metacells = as.integer(target_metacells),
+    hierarchy_min_cut_k = as.integer(hierarchy_range[["min"]]),
+    hierarchy_max_cut_k = as.integer(hierarchy_range[["max"]]),
     selected_shared_cut_k = chosen$k,
     realized_metacells = chosen$n_metacells,
     min_realized_metacell_size = as.integer(min(sizes)),
