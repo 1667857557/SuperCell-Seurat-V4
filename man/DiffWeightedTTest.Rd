@@ -2,76 +2,7 @@
 % Please edit documentation in R/SuperCell_DE_with_Seurat.R
 \name{DiffWeightedTTest}
 \alias{DiffWeightedTTest}
-\title{# Differential expression testing using Wilcoxon Rank Sum test
-#
-# Identify differentially expressed genes between two groups of cells using
-# Wilcoxon Rank Sum test
-#
-# @return Returns a p-value ranked matrix of putative differentially expressed
-# genes.
-#
-#' @importFrom pbapply pbsapply
-#' @importFrom future.apply future_sapply
-#' @importFrom future nbrOfWorkers
-#' @export
-#' 
-WilcoxDETest <- function (data.use, cells.1, cells.2, verbose = TRUE, limma = FALSE, 
-          ...) 
-{
-  data.use <- data.use[, c(cells.1, cells.2), drop = FALSE]
-  j <- seq_len(length.out = length(x = cells.1))
-  my.sapply <- ifelse(test = verbose && nbrOfWorkers() == 1, 
-                      yes = pbsapply, no = future_sapply)
-  overflow.check <- ifelse(test = is.na(x = suppressWarnings(length(x = data.use[1, 
-  ]) * length(x = data.use[1, ]))), yes = FALSE, no = TRUE)
-  presto.check <- PackageCheck("presto", error = FALSE)
-  limma.check <- PackageCheck("limma", error = FALSE)
-  group.info <- data.frame(row.names = c(cells.1, cells.2))
-  group.info[cells.1, "group"] <- "Group1"
-  group.info[cells.2, "group"] <- "Group2"
-  group.info[, "group"] <- factor(x = group.info[, "group"])
-  if (presto.check[1] && (!limma)) {
-    data.use <- data.use[, rownames(group.info), drop = FALSE]
-    res <- presto::wilcoxauc(X = data.use, y = group.info[, 
-                                                          "group"])
-    res <- res[1:(nrow(x = res)/2), ]
-    p_val <- res$pval
-  }
-  else {
-    if (getOption("Seurat.presto.wilcox.msg", TRUE) && (!limma)) {
-      message("For a (much!) faster implementation of the Wilcoxon Rank Sum Test,", 
-              "\n(default method for FindMarkers) please install the presto package", 
-              "\n--------------------------------------------", 
-              "\ninstall.packages('devtools')", "\ndevtools::install_github('immunogenomics/presto')", 
-              "\n--------------------------------------------", 
-              "\nAfter installation of presto, Seurat will automatically use the more ", 
-              "\nefficient implementation (no further action necessary).", 
-              "\nThis message will be shown once per session")
-      options(Seurat.presto.wilcox.msg = FALSE)
-    }
-    if (limma.check[1] && overflow.check) {
-      p_val <- my.sapply(X = 1:nrow(x = data.use), FUN = function(x) {
-        return(min(2 * min(limma::rankSumTestWithCorrelation(index = j, 
-                                                             statistics = data.use[x, ])), 1))
-      })
-    }
-    else {
-      if (limma && overflow.check) {
-        stop("To use the limma implementation of the Wilcoxon Rank Sum Test,\n        please install the limma package:\n        --------------------------------------------\n        install.packages('BiocManager')\n        BiocManager::install('limma')\n        --------------------------------------------")
-      }
-      else {
-        data.use <- data.use[, rownames(x = group.info), 
-                             drop = FALSE]
-        p_val <- my.sapply(X = 1:nrow(x = data.use), 
-                           FUN = function(x) {
-                             return(wilcox.test(data.use[x, ] ~ group.info[, 
-                                                                           "group"], ...)$p.value)
-                           })
-      }
-    }
-  }
-  return(data.frame(p_val, row.names = rownames(x = data.use)))
-}}
+\title{Weighted two-group t test for metacell features}
 \usage{
 DiffWeightedTTest(
   data.use,
@@ -85,75 +16,20 @@ DiffWeightedTTest(
   verbose = TRUE
 )
 }
-\description{
-# Differential expression testing using Wilcoxon Rank Sum test
-#
-# Identify differentially expressed genes between two groups of cells using
-# Wilcoxon Rank Sum test
-#
-# @return Returns a p-value ranked matrix of putative differentially expressed
-# genes.
-#
-#' @importFrom pbapply pbsapply
-#' @importFrom future.apply future_sapply
-#' @importFrom future nbrOfWorkers
-#' @export
-#' 
-WilcoxDETest <- function (data.use, cells.1, cells.2, verbose = TRUE, limma = FALSE, 
-          ...) 
-{
-  data.use <- data.use[, c(cells.1, cells.2), drop = FALSE]
-  j <- seq_len(length.out = length(x = cells.1))
-  my.sapply <- ifelse(test = verbose && nbrOfWorkers() == 1, 
-                      yes = pbsapply, no = future_sapply)
-  overflow.check <- ifelse(test = is.na(x = suppressWarnings(length(x = data.use[1, 
-  ]) * length(x = data.use[1, ]))), yes = FALSE, no = TRUE)
-  presto.check <- PackageCheck("presto", error = FALSE)
-  limma.check <- PackageCheck("limma", error = FALSE)
-  group.info <- data.frame(row.names = c(cells.1, cells.2))
-  group.info[cells.1, "group"] <- "Group1"
-  group.info[cells.2, "group"] <- "Group2"
-  group.info[, "group"] <- factor(x = group.info[, "group"])
-  if (presto.check[1] && (!limma)) {
-    data.use <- data.use[, rownames(group.info), drop = FALSE]
-    res <- presto::wilcoxauc(X = data.use, y = group.info[, 
-                                                          "group"])
-    res <- res[1:(nrow(x = res)/2), ]
-    p_val <- res$pval
-  }
-  else {
-    if (getOption("Seurat.presto.wilcox.msg", TRUE) && (!limma)) {
-      message("For a (much!) faster implementation of the Wilcoxon Rank Sum Test,", 
-              "\n(default method for FindMarkers) please install the presto package", 
-              "\n--------------------------------------------", 
-              "\ninstall.packages('devtools')", "\ndevtools::install_github('immunogenomics/presto')", 
-              "\n--------------------------------------------", 
-              "\nAfter installation of presto, Seurat will automatically use the more ", 
-              "\nefficient implementation (no further action necessary).", 
-              "\nThis message will be shown once per session")
-      options(Seurat.presto.wilcox.msg = FALSE)
-    }
-    if (limma.check[1] && overflow.check) {
-      p_val <- my.sapply(X = 1:nrow(x = data.use), FUN = function(x) {
-        return(min(2 * min(limma::rankSumTestWithCorrelation(index = j, 
-                                                             statistics = data.use[x, ])), 1))
-      })
-    }
-    else {
-      if (limma && overflow.check) {
-        stop("To use the limma implementation of the Wilcoxon Rank Sum Test,\n        please install the limma package:\n        --------------------------------------------\n        install.packages('BiocManager')\n        BiocManager::install('limma')\n        --------------------------------------------")
-      }
-      else {
-        data.use <- data.use[, rownames(x = group.info), 
-                             drop = FALSE]
-        p_val <- my.sapply(X = 1:nrow(x = data.use), 
-                           FUN = function(x) {
-                             return(wilcox.test(data.use[x, ] ~ group.info[, 
-                                                                           "group"], ...)$p.value)
-                           })
-      }
-    }
-  }
-  return(data.frame(p_val, row.names = rownames(x = data.use)))
+\arguments{
+\item{data.use}{Feature-by-metacell matrix used for testing.}
+\item{cells.1}{Column names for the first comparison group.}
+\item{cells.2}{Column names for the second comparison group.}
+\item{weights.1}{Metacell weights for \code{cells.1}.}
+\item{weights.2}{Metacell weights for \code{cells.2}.}
+\item{use.sapply}{Use the sapply/future.apply execution path when \code{TRUE}.}
+\item{return.all}{Return t statistic and degrees of freedom in addition to p values when available.}
+\item{do.bootstrapping}{Use bootstrap standard errors and p values in the weighted t test.}
+\item{verbose}{Enable progress-aware apply behavior.}
 }
+\value{
+A data frame indexed by feature, containing \code{p_val} and, when requested by the selected execution path, \code{t_value} and \code{df}.
+}
+\description{
+Runs the weighted two-group t-test implementation used by SuperCell differential-expression helpers, with metacell sizes supplied through the weight vectors.
 }
