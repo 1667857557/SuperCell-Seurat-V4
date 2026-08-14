@@ -1,36 +1,17 @@
 # SuperCell
 
-SuperCell builds metacells from single-cell RNA, CITE-seq, and multiome Seurat objects. The current code defaults to Seurat v4-style assay outputs while remaining compatible with Seurat v5 objects.
+SuperCell builds metacells from single-cell Seurat objects, including paired RNA+ATAC data.
 
 ## Installation
 
 ```r
-if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
 remotes::install_github("1667857557/SuperCell_Seurat_V4")
 library(SuperCell)
 ```
 
-Key runtime dependencies include Seurat, SeuratObject, Signac, data.table, fs, foreach, doParallel, future, future.apply, and pbapply.
+## Standard Seurat builder
 
-## Minimal Seurat workflow
-
-### 1. Preprocess the single-cell object
-
-Run the usual Seurat preprocessing first. `SCimplify_for_Seurat()` expects reductions such as `pca`, `lsi`, `apca`, or other user-provided embeddings to already exist.
-
-```r
-DefaultAssay(obj) <- "RNA"
-obj <- NormalizeData(obj)
-obj <- FindVariableFeatures(obj)
-obj <- ScaleData(obj)
-obj <- RunPCA(obj)
-```
-
-### 2. Build metacells
-
-The canonical default is `gamma = 30`, corresponding to an approximate target of 30 cells per metacell.
-
-Unimodal RNA metacells:
+Precompute the requested reductions, then run:
 
 ```r
 mc <- SCimplify_for_Seurat(
@@ -40,38 +21,27 @@ mc <- SCimplify_for_Seurat(
   dims = list(1:30),
   gamma = 30
 )
-validate_metacell_output(mc)
 ```
 
-Multimodal RNA + ADT metacells:
+For multimodal input:
 
 ```r
 mc <- SCimplify_for_Seurat(
   seurat = obj,
-  assay = c("RNA", "ADT"),
-  reduction = list("pca", "apca"),
-  dims = list(1:30, 1:18),
-  gamma = 30
-)
-validate_metacell_output(mc)
-```
-
-Optional label-aware construction uses any categorical metadata column. For example, a cell-type label prevents metacells from mixing known cell types; `NA` labels are allowed for partial annotation:
-
-```r
-mc <- SCimplify_for_Seurat(
-  seurat = obj,
-  assay = c("RNA", "ADT"),
-  reduction = list("pca", "apca"),
-  dims = list(1:30, 1:18),
-  label = "celltype",
+  assay = c("RNA", "ATAC"),
+  reduction = list("pca", "lsi"),
+  dims = list(1:30, 2:30),
   gamma = 30
 )
 ```
 
-### Independent cell-type WNN graphs with conditions pooled within cell type
+`label` can restrict graph construction by an existing categorical metadata column. `sample_col` and `condition_col` are not formals of `SCimplify_for_Seurat()`.
 
-Use `SCimplify_by_graph_group()` for paired RNA+ATAC data when every broad cell type must have an independent multimodal graph while all conditions within that cell type share one graph geometry.
+`return.graph = TRUE` is an internal/advanced compact-return option: it requires `return.seurat = FALSE` and returns the exact graph used for Walktrap. The grouped builder uses it transiently for repair and discards the graph afterward.
+
+## Shared-WNN grouped builder
+
+Use `SCimplify_by_graph_group()` when each broad cell type requires its own RNA+ATAC WNN while conditions must share that graph geometry:
 
 ```r
 sc <- SCimplify_by_graph_group(
@@ -86,30 +56,40 @@ sc <- SCimplify_by_graph_group(
 )
 ```
 
-The contract is:
+The grouped contract is:
 
-- one independent multimodal WNN graph is built for each `cell.graph.group` value;
-- RNA and ATAC modality weights are learned adaptively by the native SuperCell/Seurat WNN implementation within that graph group;
-- all conditions in a graph group jointly participate in neighbour search and Walktrap clustering;
-- `cell.split.condition` is applied only after clustering, so final metacells are condition-pure without constructing condition-specific graphs;
-- returned metacell IDs are globally unique and the cell-level table records both parent WNN membership and final condition-pure membership.
+```text
+one WNN per cell.graph.group
+  -> all conditions jointly in WNN + Walktrap
+  -> split parent membership by condition
+  -> optional small-metacell repair on the same original WNN
+  -> final condition-pure membership
+```
 
-Do not split the input by condition before calling this function. RNA PCA and ATAC LSI reductions must be defined on a shared coordinate system, not recomputed independently for each condition.
-
-`sample_col` is not a SuperCell builder argument. The relevant interfaces are:
-
-- `SCimplify_for_Seurat()` builds one graph on the supplied Seurat object; `label` creates label-restricted graph components.
-- `SCimplify_by_graph_group()` builds one native multimodal WNN graph per graph group and applies condition only after clustering.
-- `SCimplify()` and `SCimplify_from_embedding()` remain matrix/embedding builders for workflows that do not require the grouped Seurat WNN contract.
-
-The returned Seurat object from `SCimplify_for_Seurat()` contains aggregated assays, metacell size in `mc$size`, categorical metadata assignments, purity columns, and run metadata in `mc@misc`. Run `validate_metacell_output(mc)` after construction to check assay colnames, metacell size metadata, optional membership tables, and optional fragment manifests.
-
-## Metacell expression aggregation
-
-Use `MetacellExpression()` when metacell IDs already exist in metadata. Output column names preserve the grouping IDs by default.
+To enforce a minimum final size, provide an explicit affinity threshold:
 
 ```r
-obj$metacell_id <- c("MC_1", "MC_1", "MC_2")
+sc <- SCimplify_by_graph_group(
+  seurat = obj,
+  cell.graph.group = obj$cell_type,
+  cell.split.condition = obj$condition,
+  assay = c("RNA", "ATAC"),
+  reduction = list("pca", "lsi"),
+  dims = list(1:30, 2:30),
+  min_metacell_size = 10L,
+  min_metacells_per_stratum = 3L,
+  min_merge_affinity = 0.05,
+  unresolved_small_policy = "error"
+)
+```
+
+Repair candidates are restricted to the same condition and graph group. `membership_table` contains final `metacell_id` and original `parent_metacell_id` provenance.
+
+## Existing memberships
+
+Use `MetacellExpression()` to aggregate assays from an existing grouping column:
+
+```r
 mat <- MetacellExpression(
   object = obj,
   assays = "RNA",
@@ -119,18 +99,11 @@ mat <- MetacellExpression(
 )[["RNA"]]
 ```
 
-Custom output names can be supplied with `metacell.names`.
+## ATAC fragments
 
-## Fragment aggregation for ATAC/multiome
-
-`AggregateFragmentFile()` expects a named vector mapping single-cell barcodes to final metacell barcodes. Unmatched barcodes are removed by default.
+`AggregateFragmentFile()` accepts a named single-cell-to-metacell membership vector:
 
 ```r
-membership <- c(
-  "AAAC-1" = "Metacell_1",
-  "AAAG-1" = "Metacell_2"
-)
-
 mc_fragments <- AggregateFragmentFile(
   input_file = "fragments.tsv.gz",
   membership = membership,
@@ -139,45 +112,8 @@ mc_fragments <- AggregateFragmentFile(
 )
 ```
 
-For `SCimplify_for_Seurat()`, pass fragment files by chromatin assay. Multiple files per assay are supported.
+`SCimplify_for_Seurat()` also accepts fragment files through `fragmentFiles` for chromatin assays. Use `validate_metacell_output()` to validate generated metacell objects and fragment manifests.
 
-```r
-mc <- SCimplify_for_Seurat(
-  seurat = obj,
-  assay = c("RNA", "ATAC"),
-  reduction = list("pca", "lsi"),
-  dims = list(1:30, 2:30),
-  fragmentFiles = list(ATAC = c("sample1/fragments.tsv.gz", "sample2/fragments.tsv.gz")),
-  gamma = 30
-)
-```
+## Documentation
 
-`bgzip` and `tabix` must be available in `PATH` or passed with `bgzip_path` and `tabix_path`. For fragment-producing workflows, validate with `validate_metacell_output(mc, require_fragments = TRUE)`.
-
-## Useful plotting helpers
-
-```r
-DimPlotSC(obj, mc, reduction = "umap", metacell.col = "celltype")
-DimPlot.SuperCell(mc, reduction = "umap", group.by = "celltype")
-VlnPlot.SuperCell(mc, features = c("CD3D", "MS4A1"), group.by = "celltype")
-FeatureScatter.SuperCell(mc, feature1 = "rna_CD14", feature2 = "adt_CD14")
-```
-
-## Conversion from legacy SuperCell objects
-
-```r
-seurat_mc <- supercell_2_Seurat(
-  SC.GE = SC.GE,
-  SC = SC,
-  fields = c("ident"),
-  output.assay.version = "v4"
-)
-```
-
-## Tutorials
-
-Long-form rendered tutorials are available under `docs/tutorials/`. The package vignette `vignettes/a_SuperCell.Rmd` contains a short runnable example.
-
-## Citation
-
-If you use SuperCell, please cite the SuperCell publications listed in the manuscript and package documentation.
+Use the package Rd pages for the complete current function signatures and arguments.
