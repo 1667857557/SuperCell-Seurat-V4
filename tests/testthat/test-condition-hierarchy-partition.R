@@ -102,7 +102,8 @@ test_that("hierarchy mode builds one shared hierarchy per graph group", {
   )
   graph_group <- stats::setNames(sub("_.*$", "", cells), cells)
   condition <- stats::setNames(sub("^[^_]+_([^_]+)_.*$", "\\1", cells), cells)
-  calls <- list()
+  recorder <- new.env(parent = emptyenv())
+  recorder$calls <- list()
 
   testthat::local_mocked_bindings(
     SCimplify_for_Seurat = function(seurat, ...) {
@@ -112,7 +113,7 @@ test_that("hierarchy mode builds one shared hierarchy per graph group", {
       hierarchy <- igraph::cluster_walktrap(graph)
       local <- igraph::cut_at(hierarchy, no = max(1L, length(ids) %/% 4L))
       names(local) <- ids
-      calls[[length(calls) + 1L]] <<- ids
+      recorder$calls[[length(recorder$calls) + 1L]] <- ids
       list(membership = local, h_membership = hierarchy)
     },
     .package = "SuperCell"
@@ -131,8 +132,8 @@ test_that("hierarchy mode builds one shared hierarchy per graph group", {
     gamma = 4
   )
 
-  expect_length(calls, 2L)
-  expect_true(all(vapply(calls, function(ids) {
+  expect_length(recorder$calls, 2L)
+  expect_true(all(vapply(recorder$calls, function(ids) {
     length(unique(graph_group[ids])) == 1L &&
       setequal(unique(condition[ids]), c("A", "B", "C"))
   }, logical(1))))
