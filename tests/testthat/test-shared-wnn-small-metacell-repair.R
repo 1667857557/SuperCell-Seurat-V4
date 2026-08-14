@@ -72,3 +72,20 @@ test_that("repair requires an explicit affinity threshold when enabled", {
     fixed = TRUE
   )
 })
+
+test_that("SCimplify_for_Seurat exposes the original graph only for transient compact return", {
+  expect_true("return.graph" %in% names(formals(SCimplify_for_Seurat)))
+  expect_identical(eval(formals(SCimplify_for_Seurat)$return.graph), FALSE)
+  body_text <- paste(deparse(body(SCimplify_for_Seurat)), collapse = "\n")
+  expect_match(body_text, "seurat.mc$graph <- graph", fixed = TRUE)
+  expect_match(body_text, "requires `return.seurat = FALSE`", fixed = TRUE)
+})
+
+test_that("grouped repair obtains the graph from SCimplify_for_Seurat and discards it", {
+  body_text <- paste(deparse(body(SCimplify_by_graph_group)), collapse = "\n")
+  expect_match(body_text, "result_i <- SCimplify_for_Seurat", fixed = TRUE)
+  expect_match(body_text, "return.graph = min_metacell_size > 1L", fixed = TRUE)
+  expect_match(body_text, "graph = graph_i", fixed = TRUE)
+  expect_match(body_text, "result_i$graph <- NULL", fixed = TRUE)
+  expect_false(grepl(".SCBuildGraphMembership", body_text, fixed = TRUE))
+})
