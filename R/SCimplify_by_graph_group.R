@@ -34,44 +34,6 @@
   stats::setNames(ids, levels)
 }
 
-.SCBuildGraphMembership <- function(
-    seurat, k.knn, kith, kernel, gamma, graph.name,
-    assay, reduction, dims, seed, verbose) {
-  set.seed(as.integer(seed))
-  if (length(assay) == 1L) {
-    if (is.null(graph.name)) graph.name <- "nn"
-    graph <- ComputeUnimodalKnn(
-      seurat = seurat,
-      k.knn = k.knn,
-      kith = kith,
-      kernel = kernel,
-      graph.name = graph.name,
-      assay = assay,
-      reduction = reduction,
-      dims = dims,
-      verbose = verbose
-    )
-  } else {
-    if (is.null(graph.name)) graph.name <- "knn"
-    graph <- ComputeMultimodalKnn(
-      seurat = seurat,
-      k.knn = k.knn,
-      kith = kith,
-      kernel = kernel,
-      graph.name = graph.name,
-      assay = assay,
-      reduction = reduction,
-      dims = dims,
-      verbose = verbose
-    )
-  }
-  walktrap <- igraph::cluster_walktrap(graph)
-  n_target <- .SCResolveTargetMetacells(n_cells = ncol(seurat), gamma = gamma)
-  membership <- igraph::cut_at(walktrap, no = n_target)
-  names(membership) <- colnames(seurat)
-  list(graph = graph, walktrap = walktrap, membership = membership)
-}
-
 .SCSharedGraphMatrix <- function(graph, cell_ids) {
   if (!inherits(graph, "igraph")) {
     stop("Small-metacell repair requires the original igraph WNN.",
@@ -316,11 +278,11 @@
 #' @param cell.split.condition Optional condition vector. Conditions are pooled
 #'   during WNN construction and used only to split memberships after graph
 #'   clustering.
-#' @param k.knn Number of neighbours in the WNN graph.
-#' @param kith Optional neighbourhood rank passed to graph construction.
+#' @param k.knn Number of neighbours passed to [SCimplify_for_Seurat()].
+#' @param kith Optional neighbourhood rank passed to [SCimplify_for_Seurat()].
 #' @param kernel Whether to use the SuperCell kernel-weighted graph.
 #' @param gamma Target average number of cells per metacell.
-#' @param graph.name Optional graph name used during graph construction.
+#' @param graph.name Optional graph name passed to [SCimplify_for_Seurat()].
 #' @param assay One or two assays used for graph construction.
 #' @param reduction Corresponding dimensional reductions.
 #' @param dims Corresponding dimension vectors.
@@ -469,19 +431,6 @@ SCimplify_by_graph_group <- function(
     )
   }
 
-  old_random_seed_exists <- exists(".Random.seed", envir = .GlobalEnv,
-                                   inherits = FALSE)
-  old_random_seed <- if (old_random_seed_exists) {
-    get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  } else NULL
-  on.exit({
-    if (old_random_seed_exists) {
-      assign(".Random.seed", old_random_seed, envir = .GlobalEnv)
-    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-      rm(".Random.seed", envir = .GlobalEnv)
-    }
-  }, add = TRUE)
-
   parent_membership <- stats::setNames(character(length(cell_ids)), cell_ids)
   final_key <- stats::setNames(character(length(cell_ids)), cell_ids)
   group_results <- vector("list", length(group_levels))
@@ -498,8 +447,9 @@ SCimplify_by_graph_group <- function(
     graph_name_i <- if (is.null(graph.name)) NULL else {
       paste0(as.character(graph.name)[1L], "_", i)
     }
-    built <- .SCBuildGraphMembership(
+    result_i <- SCimplify_for_Seurat(
       seurat = object_i,
+      seurat.mc = NULL,
       k.knn = min(k.knn, length(cells_i) - 1L),
       kith = kith,
       kernel = kernel,
@@ -508,13 +458,32 @@ SCimplify_by_graph_group <- function(
       assay = assay,
       reduction = reduction,
       dims = dims,
+      membership = NULL,
+      metacellNormalization = FALSE,
+      avg.in.data = FALSE,
+      fragmentFiles = NULL,
       seed = seed + i - 1L,
+      prefixMC = "",
+      label = NULL,
+      return.seurat = FALSE,
+      return.graph = min_metacell_size > 1L,
       verbose = verbose
     )
-    local <- as.character(built$membership[cells_i])
-    if (length(local) != length(cells_i) || anyNA(local) ||
-        any(!nzchar(local))) {
-      stop("SuperCell returned invalid memberships in graph group `",
+    local <- as.character(result_i$membership)
+    if (length(local) != length(cells_i)) {
+      stop("SuperCell membership length differs from graph group `",
+           graph_level, "`.", call. = FALSE)
+    }
+    if (!is.null(names(result_i$membership))) {
+      index <- match(cells_i, names(result_i$membership))
+      if (anyNA(index)) {
+        stop("SuperCell membership does not cover graph group `",
+             graph_level, "`.", call. = FALSE)
+      }
+      local <- local[index]
+    }
+    if (anyNA(local) || any(!nzchar(local))) {
+      stop("SuperCell returned missing memberships in graph group `",
            graph_level, "`.", call. = FALSE)
     }
     parent <- paste0("G", i, "::", local)
@@ -528,8 +497,9 @@ SCimplify_by_graph_group <- function(
         cells_i
       )
     }
+    graph_i <- if ("graph" %in% names(result_i)) result_i$graph else NULL
     repaired <- .SCRepairSplitMembership(
-      graph = built$graph,
+      graph = graph_i,
       provisional_membership = provisional,
       stratum = repair_stratum[cells_i],
       min_metacell_size = min_metacell_size,
@@ -538,7 +508,7 @@ SCimplify_by_graph_group <- function(
       unresolved_small_policy = unresolved_small_policy
     )
     final_key[cells_i] <- repaired$membership[cells_i]
-    hierarchies[[i]] <- built$walktrap
+    hierarchies[[i]] <- result_i$h_membership
     if (nrow(repaired$merge_diagnostics)) {
       tab <- repaired$merge_diagnostics
       tab$graph_group <- graph_level
@@ -549,20 +519,19 @@ SCimplify_by_graph_group <- function(
       tab$graph_group <- graph_level
       unresolved_rows[[length(unresolved_rows) + 1L]] <- tab
     }
+    result_i$graph <- NULL
     if (isTRUE(return.group.results)) {
-      group_results[[i]] <- list(
-        membership = stats::setNames(local, cells_i),
-        repaired_membership = repaired$membership,
-        supercell_size = as.integer(table(local)),
-        h_membership = built$walktrap,
-        graph.group = graph_level,
-        input.cells = cells_i,
-        repair = repaired[c("merge_diagnostics", "unresolved",
-                            "symmetrization", "algorithm")]
-      )
+      result_i$graph.group <- graph_level
+      result_i$input.cells <- cells_i
+      result_i$repaired_membership <- repaired$membership
+      result_i$repair <- repaired[c(
+        "merge_diagnostics", "unresolved", "symmetrization", "algorithm"
+      )]
+      group_results[[i]] <- result_i
     }
-    built$graph <- NULL
+    graph_i <- NULL
     object_i <- NULL
+    result_i <- NULL
     invisible(gc(verbose = FALSE, full = TRUE))
   }
 
@@ -641,11 +610,13 @@ SCimplify_by_graph_group <- function(
       affinity = "sum(W_MN)/sqrt(vol(M)*vol(N))",
       symmetrization = "(W+t(W))/2",
       candidate_scope = "same_condition_same_graph_group_original_WNN",
-      parent_provenance = "cell_level_original_walktrap_parent_preserved"
+      parent_provenance = "cell_level_original_walktrap_parent_preserved",
+      original_graph_return = "transient_SCimplify_for_Seurat_return.graph",
+      graph_persistence = "discarded_after_repair"
     ),
     graph_scope = "independent_WNN_by_cell.graph.group",
     condition_scope = "joint_within_graph_group_then_membership_split",
-    graph_method = "SCimplify_for_Seurat_equivalent_multimodal_WNN_walktrap",
+    graph_method = "SCimplify_for_Seurat_multimodal_WNN_walktrap",
     modality_weighting = "adaptive_WNN_within_graph_group"
   )
   if (isTRUE(return.group.results)) result$group.results <- group_results
