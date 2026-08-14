@@ -12,6 +12,9 @@ SCimplify_by_graph_group(
   kith = NULL,
   kernel = TRUE,
   gamma = 30,
+  condition.partition = c("legacy_post_split", "hierarchy_constrained"),
+  min.metacell.size = 1L,
+  min.metacells.per.condition = 1L,
   graph.name = NULL,
   assay = c("RNA", "ATAC"),
   reduction = list("pca", "lsi"),
@@ -26,7 +29,7 @@ SCimplify_by_graph_group(
 
 \item{cell.graph.group}{Cell-level graph grouping vector, typically a broad cell-type annotation. A separate WNN graph is built for each value.}
 
-\item{cell.split.condition}{Optional condition vector. Conditions are pooled during WNN construction and used only to split memberships after graph clustering.}
+\item{cell.split.condition}{Optional condition vector. Conditions are pooled during WNN and Walktrap construction.}
 
 \item{k.knn}{Number of neighbours passed to \code{SCimplify_for_Seurat()}.}
 
@@ -34,7 +37,13 @@ SCimplify_by_graph_group(
 
 \item{kernel}{Whether to use the SuperCell kernel-weighted graph.}
 
-\item{gamma}{Target average number of cells per metacell. The canonical default is 30.}
+\item{gamma}{Target average number of cells per final condition-specific metacell. This is a soft resolution target in hierarchy-constrained mode.}
+
+\item{condition.partition}{Final condition partition policy. The default \code{"legacy_post_split"} preserves historical behavior. \code{"hierarchy_constrained"} selects condition-specific cuts from the one shared Walktrap hierarchy.}
+
+\item{min.metacell.size}{Hard minimum cells per final metacell in hierarchy-constrained mode.}
+
+\item{min.metacells.per.condition}{Hard minimum final metacells per condition in hierarchy-constrained mode.}
 
 \item{graph.name}{Optional graph name passed to \code{SCimplify_for_Seurat()}.}
 
@@ -51,8 +60,8 @@ SCimplify_by_graph_group(
 \item{verbose}{Forward progress messages to SuperCell graph construction.}
 }
 \value{
-A list containing globally unique condition-pure membership IDs, parent WNN-cluster memberships, a cell-level membership table, metacell sizes, group-specific hierarchies, and graph-construction provenance.
+A list containing globally unique condition-pure membership IDs, shared-hierarchy provenance, a canonical cell-level membership table, metacell sizes, partition diagnostics, group-specific hierarchies, and graph-construction provenance.
 }
 \description{
-Builds one independent multimodal WNN graph for each value of \code{cell.graph.group}. All conditions inside a graph group are included in the same WNN construction and Walktrap clustering. \code{cell.split.condition} is applied only after clustering, so final memberships are condition-pure while retaining a shared cross-condition graph within each broad cell type.
+Builds one independent multimodal WNN graph and one Walktrap hierarchy for each value of \code{cell.graph.group}. All conditions inside a graph group are included in the same graph and hierarchy. The legacy policy cuts the shared hierarchy at the global \code{gamma} target and then splits memberships by condition. The hierarchy-constrained policy instead selects, for each condition, the finest legal cut of that same hierarchy subject to the requested condition-specific resolution and hard minimum-size constraints. It never rebuilds a condition-specific graph or Walktrap hierarchy.
 }
