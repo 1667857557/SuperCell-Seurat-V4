@@ -30,12 +30,15 @@ SCimplify_for_Seurat(
   peakSep = c("-", "-"),
   label = NULL,
   return.seurat = T,
+  return.graph = FALSE,
   nb_cl = NULL,
   verbose = FALSE
 )
 }
 \arguments{
 \item{seurat}{A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells}
+
+\item{seurat.mc}{A metacell Seurat object that will be rescaled (optional); it requires a metacell hierarchy in \code{misc}.}
 
 \item{gamma}{Graining level. The default is 30 cells per metacell.}
 
@@ -51,7 +54,7 @@ SCimplify_for_Seurat(
 during metacell construction. This may contain condition, sample, cell-type,
 or another categorical annotation; \code{NA} values enable partial annotation.}
 
-\item{sobj.mc}{A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.}
+\item{return.graph}{Logical. When \code{TRUE}, \code{return.seurat} must be \code{FALSE} and the exact graph used for Walktrap is returned as \code{graph}. This is intended only for immediate grouped post-split repair and should not be persisted after repair.}
 
 \item{return_fragment_manifest}{whether to store fragment_manifest and fragment_cell_map tables in misc.}
 
@@ -60,7 +63,7 @@ or another categorical annotation; \code{NA} values enable partial annotation.}
 \item{return_membership_table}{whether to store the membership table in misc.}
 }
 \value{
-A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
+A Seurat metacell object, or when \code{return.seurat = FALSE}, a compact list containing membership, metacell sizes and the Walktrap hierarchy. If \code{return.graph = TRUE}, the compact result additionally contains the exact original graph used to construct that hierarchy.
 }
 \details{
 \code{sample_col} and \code{condition_col} are not formal arguments of this
