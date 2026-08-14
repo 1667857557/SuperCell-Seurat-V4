@@ -14,14 +14,18 @@ knitr::opts_chunk$set(
   fig.path = "figures/",
   fig.width = 6,
   fig.height = 5,
-  eval = TRUE
+  eval = FALSE
 )
 ```
 
-```{r setup, warning=FALSE, message=FALSE}
+```{r setup, warning=FALSE, message=FALSE, eval=TRUE}
 library(SuperCell)
 library(Seurat)
 ```
+
+The workflow chunks below are intentionally displayed without executing the full
+single-cell analysis during vignette construction. Run them interactively to
+reproduce the example.
 
 ## 1. Load example data
 
