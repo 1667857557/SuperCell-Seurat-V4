@@ -111,6 +111,7 @@ test_that("hierarchy mode builds one shared hierarchy per graph group", {
       igraph::V(graph)$name <- ids
       hierarchy <- igraph::cluster_walktrap(graph)
       local <- igraph::cut_at(hierarchy, no = max(1L, length(ids) %/% 4L))
+      names(local) <- ids
       calls[[length(calls) + 1L]] <<- ids
       list(membership = local, h_membership = hierarchy)
     },
@@ -181,10 +182,9 @@ test_that("hierarchy mode canonical IDs are invariant to cell order", {
       graph <- igraph::make_ring(length(ids))
       igraph::V(graph)$name <- ids
       hierarchy <- igraph::cluster_walktrap(graph)
-      list(
-        membership = igraph::cut_at(hierarchy, no = 2L),
-        h_membership = hierarchy
-      )
+      local <- igraph::cut_at(hierarchy, no = 2L)
+      names(local) <- ids
+      list(membership = local, h_membership = hierarchy)
     },
     .package = "SuperCell"
   )
