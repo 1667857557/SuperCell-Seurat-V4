@@ -2,7 +2,7 @@
 % Please edit documentation in R/transform_fragment_file.R
 \name{AggregateFragmentFile}
 \alias{AggregateFragmentFile}
-\title{AggregateFragmentFile parallel}
+\title{Aggregate fragment files by metacell membership}
 \usage{
 AggregateFragmentFile(
   input_file,
@@ -20,31 +20,19 @@ AggregateFragmentFile(
 )
 }
 \arguments{
-\item{input_file}{path to original fragments file}
-
-\item{membership}{named vector mapping single-cell barcodes to final metacell barcodes}
-
-\item{output_name}{name of the metacell fragments file}
-
-\item{output_path}{directory where the new fragments file will be saved}
-
-\item{tmp_path}{directory path for temporary files}
-
-\item{nb_cl}{number of workers to use}
-
-\item{nb_row_split}{row number for split files}
-
-\item{bgzip_path}{optional path to bgzip}
-
-\item{tabix_path}{optional path to tabix}
-
-\item{returnOutputFileName}{whether to return the new fragment file name}
-
-\item{return_details}{whether to return a structured list with output files and per-file metacell counts}
-
-\item{keep_unmatched}{whether to keep fragments whose barcode is absent from membership}
+\item{input_file}{Path to the original fragments file.}
+\item{membership}{Named vector mapping single-cell barcodes to final metacell barcodes.}
+\item{output_name}{Optional output fragments filename.}
+\item{output_path}{Directory where the metacell fragments file is written.}
+\item{tmp_path}{Directory used for temporary files.}
+\item{nb_cl}{Number of workers.}
+\item{nb_row_split}{Maximum rows per temporary split.}
+\item{bgzip_path}{Optional path to bgzip.}
+\item{tabix_path}{Optional path to tabix.}
+\item{returnOutputFileName}{Return the output filename when \code{TRUE}.}
+\item{return_details}{Return output files and per-file metacell counts when \code{TRUE}.}
+\item{keep_unmatched}{Keep fragments whose barcode is absent from \code{membership}.}
 }
 \description{
-Transform fragments from single-cell barcodes to metacell barcodes.
-}
+Replaces single-cell fragment barcodes with the supplied final metacell IDs and writes a metacell fragment file.
 }
