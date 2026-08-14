@@ -17,6 +17,10 @@ SCimplify_by_graph_group(
   reduction = list("pca", "lsi"),
   dims = list(1:30, 2:30),
   seed = 12345L,
+  min_metacell_size = 1L,
+  min_metacells_per_stratum = 1L,
+  min_merge_affinity = NULL,
+  unresolved_small_policy = c("error", "keep"),
   return.group.results = FALSE,
   verbose = FALSE
 )
@@ -38,21 +42,29 @@ SCimplify_by_graph_group(
 
 \item{graph.name}{Optional graph name passed to \code{SCimplify_for_Seurat()}.}
 
-\item{assay}{Two assays used for multimodal WNN construction, typically RNA and ATAC.}
+\item{assay}{One or two assays used for graph construction, typically RNA and ATAC.}
 
-\item{reduction}{Two corresponding dimensional reductions.}
+\item{reduction}{Corresponding dimensional reductions.}
 
-\item{dims}{Two corresponding dimension vectors.}
+\item{dims}{Corresponding dimension vectors.}
 
 \item{seed}{Base random seed. Graph group \code{i} uses \code{seed + i - 1}.}
 
-\item{return.group.results}{Retain the group-specific \code{SCimplify_for_Seurat()} results.}
+\item{min_metacell_size}{Minimum final metacell size. Values above one enable post-condition-split repair using the original shared WNN.}
+
+\item{min_metacells_per_stratum}{Minimum number of final metacells retained in each condition/graph-group stratum.}
+
+\item{min_merge_affinity}{Explicit normalized original-WNN affinity threshold for repair. Required when \code{min_metacell_size > 1}.}
+
+\item{unresolved_small_policy}{Either \code{"error"} or \code{"keep"} for small metacells with no legal sufficiently affine merge candidate.}
+
+\item{return.group.results}{Retain compact group-specific \code{SCimplify_for_Seurat()} results after the transient graph has been discarded.}
 
 \item{verbose}{Forward progress messages to SuperCell graph construction.}
 }
 \value{
-A list containing globally unique condition-pure membership IDs, parent WNN-cluster memberships, a cell-level membership table, metacell sizes, group-specific hierarchies, and graph-construction provenance.
+A list containing globally unique condition-pure membership IDs, original parent Walktrap-cluster memberships, repaired membership, sizes, hierarchies and repair diagnostics. Original cell-level parent IDs are preserved even when one repaired metacell contains multiple parent clusters.
 }
 \description{
-Builds one independent multimodal WNN graph for each value of \code{cell.graph.group}. All conditions inside a graph group are included in the same WNN construction and Walktrap clustering. \code{cell.split.condition} is applied only after clustering, so final memberships are condition-pure while retaining a shared cross-condition graph within each broad cell type.
+Builds one independent multimodal WNN graph for each value of \code{cell.graph.group}. All conditions inside a graph group are included in the same WNN construction and Walktrap clustering. \code{cell.split.condition} is applied only after clustering. Small condition-split metacells can then be repaired only within the same condition and graph group, using affinity computed from that exact original shared WNN. The graph is discarded immediately after repair.
 }
