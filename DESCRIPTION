@@ -1,9 +1,9 @@
 Package: SuperCell
 Type: Package
 Title: Simplification of Single-cell Data by Merging Together Highly Similar Cells
-Version: 2.1.0
+Version: 2.2.0
 Authors@R: c(person("Léonard","Hérault",role=c("aut","cre"),email = "leonard.herault@gustaveroussy.fr"),person("Mariia","Bilous",role=c("aut"),email = "mariia.bilous@unil.ch"),person("Aurelie","Gabriel",role=c("aut"),email = "aurelie.gabriel@unil.ch"),person("David","Gfeller",role=c("aut"),email = "david.gfeller@unil.ch"),person("Matei","Teleman",role=c("ctb"),email = "matei.teleman@unil.ch"))
-Description: Aggregates large single-cell and multimodal datasets into metacell datasets. The canonical grouped builder creates one native multimodal WNN graph per graph group, pools all conditions during graph construction, and splits memberships by condition only after clustering. Both Seurat metacell builders use a default gamma of 30 cells per metacell.
+Description: Aggregates large single-cell and multimodal datasets into metacell datasets. The canonical grouped builder creates one native multimodal WNN graph and one Walktrap hierarchy per graph group while pooling all conditions. It supports legacy post-clustering condition splitting and an explicit hierarchy-constrained policy that selects condition-specific final cuts from the same shared hierarchy with hard minimum-size and minimum-count feasibility constraints. Both Seurat metacell builders use a default gamma of 30 cells per metacell.
 License: GPL-3
 BugReports: https://github.com/GfellerLab/SuperCell/issues
 Encoding: UTF-8
