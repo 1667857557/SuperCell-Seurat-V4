@@ -24,7 +24,7 @@
 #' \code{SCimplify_for_Seurat}
 #' Build metacells from a Seurat single-cell object.
 #' @param seurat A Seurat single-cell object. It has to be preprocessed (eg. latent space computed) for the assay(s) used to identify metacells
-#' @param sobj.mc A metacell seurat object that will be rescaled (optional) it requires a metacell_hierarchy object in the slot misc.
+#' @param seurat.mc A metacell Seurat object that will be rescaled (optional); it requires a metacell hierarchy in `misc`.
 #' @param gamma Graining level. The default is 30 cells per metacell.
 #' @param assay a list of one or two assays to use to build the knn graph on which metacell are identified.
 #' @param reduction a list of corresponding reduction name in the seurat single cell object.
@@ -33,13 +33,20 @@
 #' @param label optional metadata column used to keep labeled groups separate
 #' during metacell construction. This may contain condition, sample, cell-type,
 #' or another categorical annotation; `NA` values enable partial annotation.
+#' @param return.graph Logical. When `TRUE`, `return.seurat` must be `FALSE` and
+#' the exact graph used for Walktrap is returned as `graph`. This is intended
+#' only for immediate grouped post-split repair; callers should discard it after
+#' repair instead of persisting a second graph object.
 #' @details `sample_col` and `condition_col` are not formal arguments of this
 #' Seurat builder. Pass a Seurat metadata column name through `label` when
 #' metacells must not mix known conditions, samples, cell types, or other
 #' labeled groups. The matrix builders [SCimplify()] and
 #' [SCimplify_from_embedding()] instead accept condition and cell-type vectors
 #' through `cell.split.condition` and `cell.annotation`, respectively.
-#' @return  A Seurat metacell object with metacell_hierarchy and memberships in the slot misc.
+#' @return A Seurat metacell object, or when `return.seurat = FALSE`, a compact
+#' list containing membership, metacell sizes and the Walktrap hierarchy. If
+#' `return.graph = TRUE`, that compact result additionally contains the exact
+#' original graph used to construct the hierarchy.
 #' @examples
 #' sobj.mc <- SCimplify_for_Seurat(seurat = pbmc,
 #'                          gamma = 30)
@@ -71,6 +78,7 @@ SCimplify_for_Seurat <- function(seurat,
                                  peakSep = c("-", "-"),
                                  label = NULL,
                                  return.seurat = T,
+                                 return.graph = FALSE,
                                  nb_cl = NULL,
                                  verbose = FALSE)
 {
@@ -78,6 +86,17 @@ SCimplify_for_Seurat <- function(seurat,
   library(Seurat)
   seed <- as.integer(seed)[1L]
   if (!is.finite(seed)) stop("`seed` must be a finite integer.", call. = FALSE)
+  if (!is.logical(return.graph) || length(return.graph) != 1L || is.na(return.graph)) {
+    stop("`return.graph` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (isTRUE(return.graph) && isTRUE(return.seurat)) {
+    stop("`return.graph = TRUE` requires `return.seurat = FALSE`.", call. = FALSE)
+  }
+  if (isTRUE(return.graph) && (!is.null(seurat.mc) || !is.null(membership))) {
+    stop("`return.graph = TRUE` is available only when this call constructs the graph and membership.",
+         call. = FALSE)
+  }
+  graph <- NULL
   old_random_seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
   old_random_seed <- if (old_random_seed_exists) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE) else NULL
   on.exit({
@@ -440,6 +459,12 @@ SCimplify_for_Seurat <- function(seurat,
   else {
     seurat.mc <- list(membership = membership_names, supercell_size = as.numeric(table(factor(membership_names, levels = metacell_ids))),
                       h_membership = walktrap)
+    if (isTRUE(return.graph)) {
+      if (!inherits(graph, "igraph")) {
+        stop("The original graph is unavailable for `return.graph = TRUE`.", call. = FALSE)
+      }
+      seurat.mc$graph <- graph
+    }
   }
   fields <- sapply(X = colnames(seurat@meta.data), FUN = function(X) {
     is.character(seurat[[X]][, 1]) | is.factor(seurat[[X]][,
@@ -457,7 +482,6 @@ SCimplify_for_Seurat <- function(seurat,
     seurat.mc[[paste0(f, "_purity")]] <- purity_res[colnames(seurat.mc)]
   }
   if (!is.null(label)) {
-    # annotate metacell containing only unknown cell as unknown
     seurat.mc[[label]][seurat.mc[[paste0(label,"_purity")]]==0] <- "unknown"
   }
   if (return.seurat) {
