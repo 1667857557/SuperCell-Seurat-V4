@@ -55,3 +55,23 @@ test_that("condition hierarchy cut uses one shared Walktrap hierarchy", {
   expect_setequal(partition$diagnostics$condition, c("A", "B"))
   expect_true(all(partition$diagnostics$feasibility_status == "ok"))
 })
+
+test_that("disconnected Walktrap hierarchy starts at its coarsest valid cut", {
+  graph <- igraph::disjoint_union(igraph::make_ring(4), igraph::make_ring(4))
+  hierarchy <- igraph::cluster_walktrap(graph)
+  cells <- paste0("c", seq_len(8))
+  names(igraph::V(graph)) <- cells
+  range <- SuperCell:::.SCConditionHierarchyRange(hierarchy, length(cells))
+  expect_equal(unname(range[["min"]]), 2L)
+  condition <- stats::setNames(rep(c("A", "B"), each = 4), cells)
+  partition <- SuperCell:::.SCPartitionSharedHierarchyByCondition(
+    hierarchy = hierarchy,
+    cell_ids = cells,
+    condition = condition,
+    gamma = 4,
+    min.metacell.size = 2L,
+    min.metacells.per.condition = 1L
+  )
+  expect_true(all(partition$diagnostics$hierarchy_min_cut_k == 2L))
+  expect_true(all(partition$diagnostics$min_realized_metacell_size >= 2L))
+})
