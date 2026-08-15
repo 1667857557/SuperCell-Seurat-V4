@@ -60,7 +60,7 @@ test_that("disconnected Walktrap hierarchy starts at its coarsest valid cut", {
   graph <- igraph::disjoint_union(igraph::make_ring(4), igraph::make_ring(4))
   hierarchy <- igraph::cluster_walktrap(graph)
   cells <- paste0("c", seq_len(8))
-  names(igraph::V(graph)) <- cells
+  igraph::V(graph)$name <- cells
   range <- SuperCell:::.SCConditionHierarchyRange(hierarchy, length(cells))
   expect_equal(unname(range[["min"]]), 2L)
   condition <- stats::setNames(rep(c("A", "B"), each = 4), cells)
