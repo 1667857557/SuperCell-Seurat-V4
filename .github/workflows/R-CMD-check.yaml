@@ -1,16 +1,10 @@
 # Workflow derived from https://github.com/r-lib/actions/tree/master/examples
-# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
-#
-#  <!-- badges: start -->
-#  [![R-CMD-check](https://github.com/GfellerLab/SuperCell/workflows/R-CMD-check/badge.svg)](https://github.com/GfellerLab/SuperCell/actions)
-#  <!-- badges: end -->
-#
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, Supercell2]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, Supercell2]
 
 name: R-CMD-check
 
@@ -35,7 +29,7 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - uses: r-lib/actions/setup-pandoc@v2
 
@@ -49,6 +43,15 @@ jobs:
         with:
           dependencies: '"hard"'
           extra-packages: rcmdcheck, rmarkdown, knitr, Seurat, testthat
+
+      - name: Parse Rd files without warnings
+        shell: Rscript {0}
+        run: |
+          rd_files <- list.files("man", pattern = "\\.Rd$", full.names = TRUE)
+          old_warn <- getOption("warn")
+          options(warn = 2)
+          on.exit(options(warn = old_warn), add = TRUE)
+          invisible(lapply(rd_files, tools::parse_Rd))
 
       - uses: r-lib/actions/check-r-package@v2
         with:

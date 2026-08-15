@@ -133,11 +133,27 @@ SCimplify_by_graph_group <- function(
     stop("Missing reduction(s): ",
          paste(missing_reductions, collapse = ", "), ".", call. = FALSE)
   }
+  if (!is.numeric(min.metacell.size) || length(min.metacell.size) != 1L ||
+      is.na(min.metacell.size) || !is.finite(min.metacell.size) ||
+      min.metacell.size < 1 || min.metacell.size != floor(min.metacell.size) ||
+      min.metacell.size > .Machine$integer.max) {
+    stop("`min.metacell.size` must be a positive integer.", call. = FALSE)
+  }
+  if (!is.numeric(min.metacells.per.condition) ||
+      length(min.metacells.per.condition) != 1L ||
+      is.na(min.metacells.per.condition) ||
+      !is.finite(min.metacells.per.condition) ||
+      min.metacells.per.condition < 1 ||
+      min.metacells.per.condition != floor(min.metacells.per.condition) ||
+      min.metacells.per.condition > .Machine$integer.max) {
+    stop("`min.metacells.per.condition` must be a positive integer.",
+         call. = FALSE)
+  }
   k.knn <- as.integer(k.knn)[1L]
   gamma <- suppressWarnings(as.numeric(gamma)[1L])
   seed <- as.integer(seed)[1L]
-  min.metacell.size <- as.integer(min.metacell.size)[1L]
-  min.metacells.per.condition <- as.integer(min.metacells.per.condition)[1L]
+  min.metacell.size <- as.integer(min.metacell.size)
+  min.metacells.per.condition <- as.integer(min.metacells.per.condition)
   if (is.na(k.knn) || k.knn < 1L) {
     stop("`k.knn` must be a positive integer.", call. = FALSE)
   }
@@ -146,11 +162,6 @@ SCimplify_by_graph_group <- function(
   }
   if (!is.finite(seed)) {
     stop("`seed` must be a finite integer.", call. = FALSE)
-  }
-  if (is.na(min.metacell.size) || min.metacell.size < 1L ||
-      is.na(min.metacells.per.condition) || min.metacells.per.condition < 1L) {
-    stop("Minimum metacell size/count controls must be positive integers.",
-         call. = FALSE)
   }
   if (!is.logical(kernel) || length(kernel) != 1L || is.na(kernel) ||
       !is.logical(return.group.results) || length(return.group.results) != 1L ||

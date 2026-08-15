@@ -2,7 +2,7 @@
 % Please edit documentation in R/transform_fragment_file.R
 \name{transform_fragment_file_parallel}
 \alias{transform_fragment_file_parallel}
-\title{Transform fragments file parallel}
+\title{Transform fragment files to metacell barcodes}
 \usage{
 transform_fragment_file_parallel(
   input_file,
@@ -19,29 +19,18 @@ transform_fragment_file_parallel(
 )
 }
 \arguments{
-\item{input_file}{path to original fragments file}
-
-\item{membership}{named vector mapping single-cell barcodes to final metacell barcodes}
-
-\item{output_name}{name of the metacell fragments file}
-
-\item{output_path}{directory where the new fragments file will be saved}
-
-\item{tmp_path}{directory path for temporary files}
-
-\item{nb_cl}{number of workers to use}
-
-\item{nb_row_split}{row number for split files}
-
-\item{prefixMC}{prefix to prepend to membership values for legacy callers. New code should pass final metacell barcodes in \code{membership} and leave this empty.}
-
-\item{bgzip_path}{optional path to bgzip}
-
-\item{tabix_path}{optional path to tabix}
-
-\item{returnOutputFileName}{whether to return the new fragment file name}
+\item{input_file}{Path to the original fragments file.}
+\item{membership}{Named vector mapping single-cell barcodes to final metacell barcodes.}
+\item{output_name}{Optional output fragments filename.}
+\item{output_path}{Directory where the metacell fragments file is written.}
+\item{tmp_path}{Directory used for temporary files.}
+\item{nb_cl}{Number of workers.}
+\item{nb_row_split}{Maximum rows per temporary split.}
+\item{prefixMC}{Legacy prefix prepended to membership values. New code should pass final metacell IDs directly and leave this empty when no prefix is wanted.}
+\item{bgzip_path}{Optional path to bgzip.}
+\item{tabix_path}{Optional path to tabix.}
+\item{returnOutputFileName}{Return the output filename when \code{TRUE}.}
 }
 \description{
-Backward-compatible wrapper around \code{AggregateFragmentFile}.
-}
+Backward-compatible fragment aggregation interface using the supplied final metacell membership.
 }

@@ -41,11 +41,16 @@ jobs:
             any::testthat
           dependencies: '"hard"'
 
-      - name: Parse package sources
+      - name: Parse package sources and Rd files
         shell: Rscript {0}
         run: |
           files <- list.files("R", pattern = "\\.R$", full.names = TRUE)
           invisible(lapply(files, parse))
+          rd_files <- list.files("man", pattern = "\\.Rd$", full.names = TRUE)
+          old_warn <- getOption("warn")
+          options(warn = 2)
+          on.exit(options(warn = old_warn), add = TRUE)
+          invisible(lapply(rd_files, tools::parse_Rd))
           stopifnot(
             !file.exists("man/SCimplify_by_graph_group_from_embedding.Rd"),
             !("SCimplify_by_graph_group_from_embedding" %in%
@@ -56,7 +61,7 @@ jobs:
       - name: Install SuperCell
         run: R CMD INSTALL . --no-multiarch --with-keep.source --install-tests
 
-      - name: Run grouped WNN contract tests
+      - name: Run grouped WNN and shared-hierarchy contract tests
         shell: Rscript {0}
         run: |
           library(SuperCell)
@@ -70,6 +75,13 @@ jobs:
           testthat::test_local(
             Sys.getenv("GITHUB_WORKSPACE"),
             filter = "graph-grouped-metacells",
+            load_package = "installed",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )
+          testthat::test_local(
+            Sys.getenv("GITHUB_WORKSPACE"),
+            filter = "condition-hierarchy-partition",
             load_package = "installed",
             stop_on_failure = TRUE,
             stop_on_warning = FALSE
