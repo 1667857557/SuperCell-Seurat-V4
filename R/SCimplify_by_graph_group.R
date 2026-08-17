@@ -40,10 +40,12 @@
 #' each value of `cell.graph.group`. All conditions inside a graph group are
 #' included in the same graph and hierarchy. The legacy policy cuts the shared
 #' hierarchy at the global `gamma` target and then splits memberships by
-#' condition. The hierarchy-constrained policy instead selects, for each
-#' condition, the finest legal cut of that same hierarchy subject to the
-#' requested condition-specific resolution and hard minimum-size constraints.
-#' It never rebuilds a condition-specific graph or Walktrap hierarchy.
+#' condition. The hierarchy-constrained policy instead selects a
+#' condition-specific gamma-resolution cut of that same hierarchy, then repairs
+#' only condition-specific metacells below `min.metacell.size` by following the
+#' existing Walktrap merge hierarchy upward to the nearest same-condition
+#' sibling subtree. Already-valid metacells never merge with one another. The
+#' policy never rebuilds a condition-specific graph or Walktrap hierarchy.
 #'
 #' @param seurat A preprocessed Seurat object containing the requested assays
 #'   and reductions.
@@ -55,14 +57,15 @@
 #' @param kith Optional neighbourhood rank passed to
 #'   [SCimplify_for_Seurat()].
 #' @param kernel Whether to use the SuperCell kernel-weighted graph.
-#' @param gamma Target average number of cells per final condition-specific
-#'   metacell. This is a soft resolution target in hierarchy-constrained mode.
+#' @param gamma Target average number of cells per initial condition-specific
+#'   metacell before local minimum-size repair in hierarchy-constrained mode.
 #' @param condition.partition Final condition partition policy. The default
 #'   `"legacy_post_split"` preserves historical behavior. Use
-#'   `"hierarchy_constrained"` to select condition-specific cuts from the one
-#'   shared Walktrap hierarchy.
-#' @param min.metacell.size Hard minimum cells per final metacell in
-#'   hierarchy-constrained mode.
+#'   `"hierarchy_constrained"` for a condition-specific gamma cut followed by
+#'   local minimum-size repair on the one shared Walktrap hierarchy.
+#' @param min.metacell.size Minimum final metacell size in hierarchy-constrained
+#'   mode. This is a local repair threshold and does not coarsen the initial
+#'   gamma-resolution cut globally.
 #' @param min.metacells.per.condition Hard minimum final metacells per condition
 #'   in hierarchy-constrained mode.
 #' @param graph.name Optional graph name passed to
@@ -77,9 +80,9 @@
 #' @param verbose Forward progress messages to SuperCell graph construction.
 #'
 #' @return A list containing globally unique condition-pure membership IDs,
-#'   shared-hierarchy provenance, a canonical cell-level membership table,
-#'   metacell sizes, partition diagnostics, group-specific hierarchies, and
-#'   graph-construction provenance.
+#'   initial shared-hierarchy provenance, local repair provenance, a canonical
+#'   cell-level membership table, metacell sizes, partition diagnostics,
+#'   group-specific hierarchies, and graph-construction provenance.
 #' @export
 SCimplify_by_graph_group <- function(
     seurat,
@@ -197,6 +200,7 @@ SCimplify_by_graph_group <- function(
   hierarchies <- vector("list", length(group_levels))
   names(hierarchies) <- group_levels
   partition_diagnostics <- list()
+  partition_repairs <- list()
 
   for (i in seq_along(group_levels)) {
     graph_level <- group_levels[[i]]
@@ -273,6 +277,11 @@ SCimplify_by_graph_group <- function(
       diagnostic <- partition_i$diagnostics
       diagnostic$graph_group <- graph_level
       partition_diagnostics[[length(partition_diagnostics) + 1L]] <- diagnostic
+      if (is.data.frame(partition_i$repairs) && nrow(partition_i$repairs)) {
+        repairs_i <- partition_i$repairs
+        repairs_i$graph_group <- graph_level
+        partition_repairs[[length(partition_repairs) + 1L]] <- repairs_i
+      }
     } else {
       parent_membership[cells_i] <- paste0("G", i, "::", local[cells_i])
       final_key[cells_i] <- if (is.null(split_condition)) {
@@ -353,14 +362,14 @@ SCimplify_by_graph_group <- function(
   }
   partition_schema_version <- switch(
     partition_policy,
-    hierarchy_constrained = "shared_walktrap_condition_cut_v1",
+    hierarchy_constrained = "shared_walktrap_condition_local_repair_v2",
     legacy_post_split = "legacy_post_split_v1",
     global_hierarchy_cut_no_split = "global_native_gamma_v1"
   )
   condition_scope <- switch(
     partition_policy,
     hierarchy_constrained =
-      "joint_within_graph_group_shared_hierarchy_condition_constrained_cut",
+      "joint_within_graph_group_shared_hierarchy_gamma_cut_local_tree_repair",
     legacy_post_split = "joint_within_graph_group_then_membership_split",
     global_hierarchy_cut_no_split = "not_applicable_no_condition_split"
   )
@@ -383,6 +392,11 @@ SCimplify_by_graph_group <- function(
     partition_schema_version = partition_schema_version,
     partition_diagnostics = if (length(partition_diagnostics)) {
       do.call(rbind, partition_diagnostics)
+    } else {
+      data.frame()
+    },
+    partition_repairs = if (length(partition_repairs)) {
+      do.call(rbind, partition_repairs)
     } else {
       data.frame()
     },

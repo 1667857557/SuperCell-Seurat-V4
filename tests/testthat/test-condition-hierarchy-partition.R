@@ -33,6 +33,108 @@ test_that("condition hierarchy cut enforces necessary feasibility before search"
   )
 })
 
+test_that("merge-matrix topology reproduces igraph cut_at partitions", {
+  graph <- igraph::make_ring(20)
+  hierarchy <- igraph::cluster_walktrap(graph)
+  cells <- paste0("c", seq_len(20))
+  range <- SuperCell:::.SCConditionHierarchyRange(hierarchy, length(cells))
+  requested <- unique(as.integer(c(
+    range[["min"]], 3L, 5L, 9L, length(cells)
+  )))
+  requested <- requested[
+    requested >= range[["min"]] & requested <= range[["max"]]
+  ]
+  for (k in requested) {
+    topology <- SuperCell:::.SCConditionHierarchyInitialNodes(
+      hierarchy = hierarchy,
+      cell_ids = cells,
+      initial_k = k
+    )
+    cut <- SuperCell:::.SCConditionHierarchyCut(hierarchy, cells, k)
+    expect_identical(
+      unname(outer(topology$active_node, topology$active_node, `==`)),
+      unname(outer(cut, cut, `==`))
+    )
+  }
+})
+
+test_that("minimum size does not globally coarsen the gamma-resolution cut", {
+  graph <- igraph::make_ring(24)
+  hierarchy <- igraph::cluster_walktrap(graph)
+  cells <- paste0("c", seq_len(24))
+  condition <- stats::setNames(rep("A", 24), cells)
+  loose <- SuperCell:::.SCFindConditionHierarchyCut(
+    hierarchy = hierarchy,
+    cell_ids = cells,
+    condition = condition,
+    condition_value = "A",
+    gamma = 4,
+    min.metacell.size = 1L,
+    min.metacells.per.condition = 1L
+  )
+  repaired_threshold <- SuperCell:::.SCFindConditionHierarchyCut(
+    hierarchy = hierarchy,
+    cell_ids = cells,
+    condition = condition,
+    condition_value = "A",
+    gamma = 4,
+    min.metacell.size = 3L,
+    min.metacells.per.condition = 1L
+  )
+  expect_identical(loose$k, repaired_threshold$k)
+  expect_identical(
+    loose$diagnostic$target_metacells,
+    repaired_threshold$diagnostic$target_metacells
+  )
+})
+
+test_that("local hierarchy repair absorbs only undersized condition fragments", {
+  graph <- igraph::make_ring(40)
+  hierarchy <- igraph::cluster_walktrap(graph)
+  cells <- paste0("c", seq_len(40))
+  initial_k <- 8L
+  initial <- SuperCell:::.SCConditionHierarchyCut(
+    hierarchy, cells, initial_k
+  )
+  shared_groups <- split(cells, initial)
+  ordered <- names(sort(vapply(shared_groups, length, integer(1)),
+                        decreasing = TRUE))
+  expect_gte(length(ordered), 4L)
+  expect_true(all(vapply(shared_groups[ordered[1:3]], length, integer(1)) >= 3L))
+
+  condition <- stats::setNames(rep("B", length(cells)), cells)
+  valid_labels <- ordered[1:3]
+  for (label in valid_labels) {
+    condition[shared_groups[[label]]] <- "A"
+  }
+  small_label <- ordered[[4L]]
+  small_cell <- shared_groups[[small_label]][[1L]]
+  condition[[small_cell]] <- "A"
+
+  repaired <- SuperCell:::.SCRepairSmallConditionMetacells(
+    hierarchy = hierarchy,
+    cell_ids = cells,
+    condition = condition,
+    condition_value = "A",
+    initial_membership = initial,
+    initial_k = initial_k,
+    gamma = 5,
+    min.metacell.size = 3L,
+    min.metacells.per.condition = 1L
+  )
+  expect_equal(repaired$initial_metacells, 4L)
+  expect_equal(repaired$realized_metacells, 3L)
+  expect_gt(nrow(repaired$repairs), 0L)
+  expect_true(all(unname(repaired$sizes) >= 3L))
+
+  valid_representatives <- vapply(
+    shared_groups[valid_labels], `[[`, character(1), 1L
+  )
+  valid_final <- unname(repaired$final_key[valid_representatives])
+  expect_equal(length(unique(valid_final)), 3L)
+  expect_true(unname(repaired$final_key[[small_cell]]) %in% valid_final)
+})
+
 test_that("condition hierarchy cut uses one shared Walktrap hierarchy", {
   graph <- igraph::make_ring(12)
   hierarchy <- igraph::cluster_walktrap(graph)
@@ -54,6 +156,10 @@ test_that("condition hierarchy cut uses one shared Walktrap hierarchy", {
   }, logical(1))))
   expect_setequal(partition$diagnostics$condition, c("A", "B"))
   expect_true(all(partition$diagnostics$feasibility_status == "ok"))
+  expect_true(all(
+    partition$diagnostics$realized_metacells <=
+      partition$diagnostics$initial_metacells
+  ))
 })
 
 test_that("disconnected Walktrap hierarchy starts at its coarsest valid cut", {
@@ -140,7 +246,7 @@ test_that("hierarchy mode builds one shared hierarchy per graph group", {
   expect_identical(result$partition_policy, "hierarchy_constrained")
   expect_identical(
     result$partition_schema_version,
-    "shared_walktrap_condition_cut_v1"
+    "shared_walktrap_condition_local_repair_v2"
   )
   groups <- split(result$membership_table, result$membership_table$metacell_id)
   expect_true(all(vapply(groups, function(tab) {
