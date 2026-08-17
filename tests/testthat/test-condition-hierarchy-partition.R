@@ -33,6 +33,31 @@ test_that("condition hierarchy cut enforces necessary feasibility before search"
   )
 })
 
+test_that("merge-matrix topology reproduces igraph cut_at partitions", {
+  graph <- igraph::make_ring(20)
+  hierarchy <- igraph::cluster_walktrap(graph)
+  cells <- paste0("c", seq_len(20))
+  range <- SuperCell:::.SCConditionHierarchyRange(hierarchy, length(cells))
+  requested <- unique(as.integer(c(
+    range[["min"]], 3L, 5L, 9L, length(cells)
+  )))
+  requested <- requested[
+    requested >= range[["min"]] & requested <= range[["max"]]
+  ]
+  for (k in requested) {
+    topology <- SuperCell:::.SCConditionHierarchyInitialNodes(
+      hierarchy = hierarchy,
+      cell_ids = cells,
+      initial_k = k
+    )
+    cut <- SuperCell:::.SCConditionHierarchyCut(hierarchy, cells, k)
+    expect_identical(
+      unname(outer(topology$active_node, topology$active_node, `==`)),
+      unname(outer(cut, cut, `==`))
+    )
+  }
+})
+
 test_that("minimum size does not globally coarsen the gamma-resolution cut", {
   graph <- igraph::make_ring(24)
   hierarchy <- igraph::cluster_walktrap(graph)
