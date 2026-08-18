@@ -202,7 +202,13 @@
     }
     as.integer(node)
   }, integer(1))
-  stats::setNames(active_node, cell_ids)
+  active_node <- stats::setNames(active_node, cell_ids)
+  if (!identical(names(active_node), cell_ids) || anyNA(active_node) ||
+      any(active_node < 1L) ||
+      any(active_node > n_vertices + n_merges)) {
+    stop("Walktrap active hierarchy nodes cannot be aligned to graph-group cells.",
+         call. = FALSE)
+  }
 
   list(
     active_node = active_node,
@@ -269,8 +275,9 @@
     gid <- group_ids[[j]]
     cells_j <- group_members[[gid]]
     nodes_j <- unique(unname(topology$active_node[cells_j]))
-    if (length(nodes_j) != 1L) {
-      stop("An initial condition metacell spans multiple hierarchy nodes.",
+    if (length(nodes_j) != 1L || is.na(nodes_j[[1L]]) ||
+        nodes_j[[1L]] < 1L || nodes_j[[1L]] > length(node_groups)) {
+      stop("An initial condition metacell cannot be aligned to one valid hierarchy node.",
            call. = FALSE)
     }
     node <- nodes_j[[1L]]
