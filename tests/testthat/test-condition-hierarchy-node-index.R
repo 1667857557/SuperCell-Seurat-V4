@@ -54,3 +54,39 @@ test_that("local hierarchy repair accepts barcode-indexed initial groups", {
     NA
   )
 })
+
+test_that("empty condition branches preserve hierarchy node indices", {
+  graph <- igraph::make_ring(40)
+  hierarchy <- igraph::cluster_walktrap(graph)
+  cells <- paste0("cell_", seq_len(40))
+  initial_k <- 20L
+  initial <- SuperCell:::.SCConditionHierarchyCut(
+    hierarchy = hierarchy,
+    cell_ids = cells,
+    k = initial_k
+  )
+
+  initial_groups <- split(cells, initial)
+  selected_label <- names(which.max(lengths(initial_groups)))
+  selected <- initial_groups[[selected_label]]
+  expect_gte(length(selected), 2L)
+
+  condition <- stats::setNames(rep("B", length(cells)), cells)
+  condition[selected] <- "A"
+
+  repaired <- SuperCell:::.SCRepairSmallConditionMetacells(
+    hierarchy = hierarchy,
+    cell_ids = cells,
+    condition = condition,
+    condition_value = "A",
+    initial_membership = initial,
+    initial_k = initial_k,
+    gamma = 5,
+    min.metacell.size = 2L,
+    min.metacells.per.condition = 1L
+  )
+
+  expect_identical(sort(names(repaired$final_key)), sort(selected))
+  expect_identical(repaired$realized_metacells, 1L)
+  expect_true(all(unname(repaired$sizes) >= 2L))
+})
