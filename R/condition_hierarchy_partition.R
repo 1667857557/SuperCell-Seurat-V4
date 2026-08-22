@@ -415,7 +415,11 @@
 
       parent_groups <- unique(c(left, right))
       parent_groups <- parent_groups[group_active[parent_groups] %in% TRUE]
-      node_groups[[parent_node]] <- parent_groups
+      # Preserve the fixed Walktrap node-index address space when neither
+      # child contains a group from the condition being repaired.  Assigning
+      # NULL with `[[<-` removes a list element and shifts every later node,
+      # so a subsequent, otherwise-valid merge child can become out of range.
+      node_groups[parent_node] <- list(parent_groups)
     }
   }
 

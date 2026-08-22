@@ -1,3 +1,9 @@
+# SuperCell 2.2.0
+
+- Preserves empty condition-specific nodes in the fixed Walktrap hierarchy
+  address space, preventing later valid merge children from failing with a
+  `subscript out of bounds` error during local minimum-size repair.
+
 # SuperCell 2.1.0
 
 - Adds `SCimplify_by_graph_group()` as the single canonical grouped multimodal metacell builder.
